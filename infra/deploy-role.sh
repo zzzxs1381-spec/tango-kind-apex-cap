@@ -9,14 +9,20 @@ esac
 
 ROOT=/opt/xfreedom/app
 REPO=${XF_REPO:-https://github.com/zzzxs1381-spec/tango-kind-apex-cap.git}
-BRANCH=${XF_BRANCH:-main}
+REF=${XF_REF:-${XF_BRANCH:-main}}
+ENV_SOURCE=${XF_ENV_FILE:-}
 
 if [[ ! -d "$ROOT/.git" ]]; then
   rm -rf "$ROOT"
-  git clone --depth 1 --branch "$BRANCH" "$REPO" "$ROOT"
-else
-  git -C "$ROOT" fetch origin "$BRANCH"
-  git -C "$ROOT" reset --hard "origin/$BRANCH"
+  git clone --filter=blob:none "$REPO" "$ROOT"
+fi
+
+git -C "$ROOT" fetch --force --depth 1 origin "$REF"
+git -C "$ROOT" reset --hard FETCH_HEAD
+
+if [[ -n "$ENV_SOURCE" ]]; then
+  [[ -r "$ENV_SOURCE" ]] || { echo "Missing XF_ENV_FILE=$ENV_SOURCE" >&2; exit 1; }
+  install -m 600 "$ENV_SOURCE" "$ROOT/.env"
 fi
 
 cd "$ROOT"

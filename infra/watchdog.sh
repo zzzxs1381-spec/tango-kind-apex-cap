@@ -19,7 +19,11 @@ esac
 
 cd "${APP_ROOT:-/opt/xfreedom/app}"
 
-if ! ip link show wg0 >/dev/null 2>&1; then
+if ip link show awg0 >/dev/null 2>&1; then
+  :
+elif systemctl list-unit-files awg-quick@awg0.service >/dev/null 2>&1; then
+  systemctl restart awg-quick@awg0.service || true
+elif ! ip link show wg0 >/dev/null 2>&1; then
   systemctl restart wg-quick@wg0 || true
 fi
 
@@ -35,7 +39,7 @@ while read -r id; do
 done < <(docker compose -f "$COMPOSE" ps -q)
 
 if [[ "$ROLE" == "edge" ]]; then
-  curl -fsS --max-time 4 http://127.0.0.1/healthz >/dev/null || docker compose -f "$COMPOSE" restart edge
+  curl -fsS --max-time 4 http://127.0.0.1:8080/healthz >/dev/null || docker compose -f "$COMPOSE" restart edge
 else
   WG_IP=$(awk -F= '/^WG_IP=/{print $2}' .env | tail -n1)
   [[ -n "$WG_IP" ]] && curl -fsS --max-time 5 "http://${WG_IP}:3000/api/health" >/dev/null || true
