@@ -31,19 +31,28 @@ function Home() {
       useApp.getState().setPhase("idle", "Нажми «Подключить» — маршрут соберётся сам");
       return;
     }
+    useApp.getState().setPhase("flying", "Определяю точку и проверяю доступность…");
+    await locateQuiet();
+
     const me = useApp.getState().person;
     const node = pickNode(me.lat, me.lng);
     useApp.getState().setDest(node.city);
-    useApp.getState().setPhase("flying", `${me.city} → ${node.city}`);
-    void locateQuiet();
+    useApp.getState().setPhase("flying", `${me.city} → ${node.city} · диагностика`);
+
     const rows = await Promise.race([
       measureAll(),
       new Promise<Awaited<ReturnType<typeof measureAll>>>((r) => setTimeout(() => r([]), 4200)),
     ]);
     const path = pickTransport(rows);
+    const route = renderLink(path.transport, path.sni, path.vector);
     useApp.getState().setResults(rows);
-    useApp.getState().setAdvice(renderLink(path.transport, path.sni, path.vector));
-    useApp.getState().setPhase("on", `${me.city} → ${node.city}`);
+    useApp.getState().setAdvice(route);
+    useApp.getState().setPhase(
+      "idle",
+      route.startsWith("узел ")
+        ? `Маршрут рассчитан: ${me.city} → ${node.city}. Для реального VPN нужен нативный клиент.`
+        : route.split("\n")[0] ?? "Маршрут рассчитан, но узел не настроен.",
+    );
   }
 
   function pay() {
@@ -159,19 +168,19 @@ function Home() {
             })}
           </div>
           <pre className="overflow-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-3 font-mono text-[11px] whitespace-pre-wrap text-[var(--color-muted)]">
-            {advice || "Сначала «Подключить» — здесь будет ссылка узла."}
+            {advice || "Сначала «Подключить» — здесь появится результат диагностики и выбранный узел."}
           </pre>
           {advice ? (
             <button
               type="button"
               className="glass-btn w-full"
               onClick={async () => {
-                await navigator.clipboard.writeText(advice.split("\n")[0] ?? advice);
+                await navigator.clipboard.writeText(advice);
                 setCopied(true);
                 window.setTimeout(() => setCopied(false), 1200);
               }}
             >
-              {copied ? "Скопировано" : "Скопировать ссылку"}
+              {copied ? "Скопировано" : "Скопировать диагностику"}
             </button>
           ) : null}
         </section>
