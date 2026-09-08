@@ -8,7 +8,7 @@ CORE2_IP=${3:?usage: cluster-bootstrap.sh EDGE_IP CORE1_IP CORE2_IP}
 
 XF_REPO=${XF_REPO:-zzzxs1381-spec/tango-kind-apex-cap}
 XF_REF=${XF_REF:-main}
-REALITY_SNI=${REALITY_SNI:-www.microsoft.com}
+REALITY_SNI=${REALITY_SNI:-auto}
 WORK=${XF_WORKDIR:-/root/xfreedom-rkn-controller}
 
 EDGE_MESH=10.77.0.1
