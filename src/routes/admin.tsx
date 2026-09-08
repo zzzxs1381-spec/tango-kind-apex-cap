@@ -1,121 +1,135 @@
-import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { useApp } from "@/lib/session";
 import { useFleet } from "@/lib/nodes";
 
-const KEY = "xf-admin-ok";
+export const Route = createFileRoute("/admin")({ component: ControlCenter });
 
-export const Route = createFileRoute("/admin")({ component: Admin });
+type Health = "ready" | "needs-config" | "offline";
 
-function Admin() {
-  const [ok, setOk] = useState(() =>
-    typeof window !== "undefined" ? sessionStorage.getItem(KEY) === "1" : false,
-  );
-  const [pin, setPin] = useState("");
-  const orders = useApp((s) => s.orders);
+const services: Array<{ name: string; health: Health; note: string }> = [
+  { name: "Control Center", health: "ready", note: "Интерфейс и локальное состояние готовы" },
+  { name: "Model Router", health: "needs-config", note: "Нужны серверные ключи провайдеров" },
+  { name: "MCP Gateway", health: "needs-config", note: "Подключение серверов инструментов" },
+  { name: "PostgreSQL", health: "needs-config", note: "Нужен DATABASE_URL" },
+  { name: "Qdrant", health: "needs-config", note: "Нужен URL/ключ Qdrant" },
+  { name: "Temporal", health: "needs-config", note: "Нужен durable workflow backend" },
+  { name: "Telemetry", health: "needs-config", note: "OpenTelemetry exporter" },
+  { name: "Watchdog", health: "needs-config", note: "Запускается вместе с backend worker" },
+];
+
+const agents = [
+  ["Supervisor", "Планирует, делегирует, проверяет результат"],
+  ["Coding", "Код, тесты, GitHub и исправления"],
+  ["Research", "Поиск, анализ и проверка источников"],
+  ["Infrastructure", "AWS, деплой, диагностика окружения"],
+  ["Memory", "Postgres, Qdrant и знания проекта"],
+  ["Diagnostics", "Логи, сбои, retries и recovery"],
+] as const;
+
+function Badge({ health }: { health: Health }) {
+  const text = health === "ready" ? "готово" : health === "needs-config" ? "нужна настройка" : "offline";
+  return <span className="rounded-full border border-[var(--color-line)] px-2 py-1 font-mono text-[10px] uppercase tracking-wide">{text}</span>;
+}
+
+function ControlCenter() {
   const person = useApp((s) => s.person);
-  const mark = useApp((s) => s.markOrder);
-  const [merchant, setMerchant] = useState("");
+  const orders = useApp((s) => s.orders);
   const nodes = useFleet((s) => s.nodes);
-  const patch = useFleet((s) => s.patch);
 
-  if (!ok) {
-    return (
-      <main className="mx-auto grid min-h-screen max-w-sm place-content-center gap-3 px-4">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">Панель</h1>
-        <input
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          className="h-11 rounded-xl border border-[var(--color-line)] bg-[var(--color-raised)] px-3"
-          placeholder="ключ"
-        />
-        <button
-          type="button"
-          className="glass-btn w-full"
-          onClick={() => {
-            if (pin.trim() === "malik") {
-              sessionStorage.setItem(KEY, "1");
-              setOk(true);
-            }
-          }}
-        >
-          Войти
-        </button>
-        <Link to="/" className="brand-link text-center text-sm">
-          назад
-        </Link>
-      </main>
-    );
-  }
+  const readyCount = useMemo(() => services.filter((s) => s.health === "ready").length, []);
 
   return (
-    <main className="mx-auto h-dvh max-w-lg overflow-y-auto px-4 py-6">
-      <div className="mb-4 flex justify-between">
-        <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">Админ</h1>
-        <Link to="/" className="brand-link text-sm">
-          приложение
-        </Link>
-      </div>
-      <h2 className="mb-2 text-sm text-[var(--color-muted)]">Сессия</h2>
-      <p className="mb-6 font-mono text-xs text-[var(--color-muted)]">
-        {person.city}, {person.country}
-        {person.ip ? ` · ${person.ip}` : ""}
-        {person.tgId ? ` · tg ${person.tgId}` : ""}
-      </p>
-      <h2 className="mb-2 text-sm text-[var(--color-muted)]">Узлы</h2>
-      <ul className="mb-6 grid gap-3">
-        {nodes.map((n) => (
-          <li key={n.id} className="grid gap-2 rounded-xl border border-[var(--color-line)] px-3 py-3">
-            <p className="text-sm">
-              {n.city} · {n.id}
-            </p>
-            <input
-              defaultValue={n.host}
-              placeholder="хост"
-              onBlur={(e) => patch(n.id, { host: e.target.value.trim() })}
-              className="h-10 rounded-md border border-[var(--color-line)] bg-[var(--color-raised)] px-3 font-mono text-sm"
-            />
-            <input
-              defaultValue={n.hyPass}
-              placeholder="пароль Hy2"
-              onBlur={(e) => patch(n.id, { hyPass: e.target.value.trim() })}
-              className="h-10 rounded-md border border-[var(--color-line)] bg-[var(--color-raised)] px-3 font-mono text-sm"
-            />
-            <input
-              defaultValue={n.uuid}
-              placeholder="UUID VLESS"
-              onBlur={(e) => patch(n.id, { uuid: e.target.value.trim() })}
-              className="h-10 rounded-md border border-[var(--color-line)] bg-[var(--color-raised)] px-3 font-mono text-sm"
-            />
-          </li>
-        ))}
-      </ul>
-      <p className="mb-2 text-sm text-[var(--color-muted)]">Cryptomus merchant UUID</p>
-      <input
-        value={merchant}
-        onChange={(e) => setMerchant(e.target.value)}
-        className="mb-4 h-11 w-full rounded-md border border-[var(--color-line)] bg-[var(--color-raised)] px-3 font-mono text-sm"
-        placeholder="uuid"
-      />
-      <h2 className="mb-2 text-sm text-[var(--color-muted)]">Заказы</h2>
-      <ul className="grid gap-2">
-        {orders.length ? (
-          orders.map((o) => (
-            <li key={o.id} className="rounded-xl border border-[var(--color-line)] px-3 py-3">
-              <p className="text-sm">
-                #{o.id} · {o.plan} · {o.amount} ₽ · {o.status}
-              </p>
-              {o.status === "wait" ? (
-                <button type="button" className="mt-2 text-sm text-[var(--color-ok)]" onClick={() => mark(o.id, "ok")}>
-                  отметить оплату
-                </button>
-              ) : null}
-            </li>
-          ))
-        ) : (
-          <p className="text-sm text-[var(--color-muted)]">пока пусто</p>
-        )}
-      </ul>
+    <main className="mx-auto min-h-screen max-w-6xl px-4 py-6">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-[var(--color-muted)]">XFreedom OS</p>
+          <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold">Control Center</h1>
+          <p className="mt-2 max-w-2xl text-sm text-[var(--color-muted)]">
+            Безопасная панель управления. Секреты и пароли узлов больше не должны храниться в браузере.
+          </p>
+        </div>
+        <Link to="/" className="glass-btn px-4 py-2 text-sm">Открыть приложение</Link>
+      </header>
+
+      <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <p className="text-xs text-[var(--color-muted)]">Сервисы</p>
+          <p className="mt-2 text-2xl font-semibold">{readyCount}/{services.length}</p>
+        </div>
+        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <p className="text-xs text-[var(--color-muted)]">Агенты</p>
+          <p className="mt-2 text-2xl font-semibold">{agents.length}</p>
+        </div>
+        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <p className="text-xs text-[var(--color-muted)]">Узлы</p>
+          <p className="mt-2 text-2xl font-semibold">{nodes.length}</p>
+        </div>
+        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <p className="text-xs text-[var(--color-muted)]">Заказы</p>
+          <p className="mt-2 text-2xl font-semibold">{orders.length}</p>
+        </div>
+      </section>
+
+      <section className="mb-6 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <h2 className="mb-3 text-sm font-semibold">Состояние системы</h2>
+          <div className="grid gap-2">
+            {services.map((service) => (
+              <div key={service.name} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-line)] px-3 py-3">
+                <div>
+                  <p className="text-sm">{service.name}</p>
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">{service.note}</p>
+                </div>
+                <Badge health={service.health} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <h2 className="mb-3 text-sm font-semibold">Агенты</h2>
+          <div className="grid gap-2">
+            {agents.map(([name, note]) => (
+              <div key={name} className="rounded-xl border border-[var(--color-line)] px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm">{name}</p>
+                  <span className="font-mono text-[10px] uppercase text-[var(--color-muted)]">defined</span>
+                </div>
+                <p className="mt-1 text-xs text-[var(--color-muted)]">{note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <h2 className="mb-3 text-sm font-semibold">Публичные данные узлов</h2>
+          <div className="grid gap-2">
+            {nodes.map((node) => (
+              <div key={node.id} className="flex items-center justify-between rounded-xl border border-[var(--color-line)] px-3 py-3">
+                <div>
+                  <p className="text-sm">{node.city}</p>
+                  <p className="font-mono text-[11px] text-[var(--color-muted)]">{node.id} · {node.host || "host не задан"}</p>
+                </div>
+                <span className="text-xs text-[var(--color-muted)]">{node.live ? "active" : "disabled"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
+          <h2 className="mb-3 text-sm font-semibold">Текущая сессия</h2>
+          <p className="text-sm">{person.city}, {person.country}</p>
+          <p className="mt-1 font-mono text-xs text-[var(--color-muted)]">
+            {person.ip || "IP не определён"}{person.tgId ? ` · tg ${person.tgId}` : ""}
+          </p>
+          <div className="mt-4 rounded-xl border border-[var(--color-line)] px-3 py-3 text-xs text-[var(--color-muted)]">
+            Следующий этап запуска backend: server-side secrets, model router, MCP, Postgres/Qdrant, Temporal и watchdog.
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
