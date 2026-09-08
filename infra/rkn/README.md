@@ -10,8 +10,8 @@ This directory is the censorship-resilient transport layer for the three-node XF
 
 The public client paths are intentionally diverse:
 
-1. **VLESS + XTLS Vision + REALITY over TCP/443** — primary path.
-2. **Hysteria 2 + Salamander over UDP/443** — independent QUIC/UDP fallback.
+1. **VLESS + XTLS Vision + REALITY over TCP/443** — primary path. The installer probes a small role-specific target set with `xray tls ping` instead of hard-coding one REALITY camouflage target.
+2. **Hysteria 2 + Salamander over UDP/443** — independent QUIC/UDP fallback. Self-signed TLS is pinned in the generated URI with `pinSHA256`.
 3. **AmneziaWG** — private inter-server mesh. Plain WireGuard is not used for the RU-to-foreign mesh because its fixed protocol signature is comparatively easy to classify.
 
 On the edge node, Xray sends user traffic to private SOCKS5 inbounds on the two foreign cores over the encrypted AmneziaWG mesh and uses Xray observatory + leastPing for health-aware selection. Each foreign core can also be used directly by clients if the Russian edge is unavailable.
@@ -46,7 +46,7 @@ The script asks for all three root passwords with hidden input. Passwords are ke
 
 ## Client policy
 
-For phones and desktops, use a client that supports **TUN/full-tunnel mode** if the goal is the whole Internet rather than a browser-only proxy. Keep at least two profiles enabled/available: REALITY as the default and Hysteria2 as an alternate. Keep a direct foreign-core profile as a fallback to the Russian edge.
+For phones and desktops, use a client that supports **TUN/full-tunnel mode** if the goal is the whole Internet rather than a browser-only proxy. Keep at least two profiles enabled/available: REALITY as the default and Hysteria2 as an alternate. The installer emits `chrome`, `firefox`, and `qq` REALITY fingerprint variants for troubleshooting carrier-specific TLS fingerprint filtering. Keep a direct foreign-core profile as a fallback to the Russian edge.
 
 Applications such as WhatsApp, Telegram, YouTube and Instagram do not need special server-side routing rules when the device is in full-tunnel mode; all their TCP/UDP/DNS traffic is carried through the selected tunnel.
 
