@@ -1,0 +1,17 @@
+services:
+  edge:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    environment:
+      CORE_A: ${CORE_A_WG_IP:-10.77.0.2}
+      CORE_B: ${CORE_B_WG_IP:-10.77.0.3}
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
