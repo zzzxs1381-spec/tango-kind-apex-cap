@@ -6,7 +6,7 @@ services:
       CORE_A: ${CORE_A_WG_IP:-10.77.0.2}
       CORE_B: ${CORE_B_WG_IP:-10.77.0.3}
     ports:
-      - "80:80"
+      - "127.0.0.1:8080:80"
     volumes:
       - ./infra/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
     healthcheck:
