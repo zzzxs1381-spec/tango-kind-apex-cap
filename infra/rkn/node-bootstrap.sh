@@ -34,6 +34,12 @@ fi
 apt-get update
 apt-get install -y amneziawg
 
+if ! modinfo amneziawg >/dev/null 2>&1; then
+  echo "AmneziaWG kernel module is missing for kernel $(uname -r)." >&2
+  echo "Install matching linux-headers and rebuild/upgrade amneziawg, then retry." >&2
+  exit 1
+fi
+
 if ! command -v awg >/dev/null 2>&1 || ! command -v awg-quick >/dev/null 2>&1; then
   echo "AmneziaWG tools were not installed" >&2
   exit 1
