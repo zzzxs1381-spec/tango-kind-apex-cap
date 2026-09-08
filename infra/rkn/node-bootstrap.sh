@@ -168,7 +168,6 @@ if [[ ! -s /etc/hysteria/server.key || ! -s /etc/hysteria/server.crt ]]; then
 fi
 
 ufw allow 22/tcp
-ufw allow 80/tcp
 ufw allow 443/tcp
 ufw allow 443/udp
 ufw --force enable
