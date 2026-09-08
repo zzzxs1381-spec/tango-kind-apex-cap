@@ -332,7 +332,8 @@ systemctl enable --now xfreedom-rkn-watchdog.timer
 VLESS_CHROME="vless://${XRAY_UUID}@${PUBLIC_IP}:443?type=tcp&encryption=none&security=reality&pbk=${XRAY_PASSWORD}&fp=chrome&sni=${REALITY_SNI}&sid=${SHORT_ID}&spx=%2F&flow=xtls-rprx-vision#XFreedom-${ROLE}-REALITY-chrome"
 VLESS_FIREFOX="vless://${XRAY_UUID}@${PUBLIC_IP}:443?type=tcp&encryption=none&security=reality&pbk=${XRAY_PASSWORD}&fp=firefox&sni=${REALITY_SNI}&sid=${SHORT_ID}&spx=%2F&flow=xtls-rprx-vision#XFreedom-${ROLE}-REALITY-firefox"
 VLESS_QQ="vless://${XRAY_UUID}@${PUBLIC_IP}:443?type=tcp&encryption=none&security=reality&pbk=${XRAY_PASSWORD}&fp=qq&sni=${REALITY_SNI}&sid=${SHORT_ID}&spx=%2F&flow=xtls-rprx-vision#XFreedom-${ROLE}-REALITY-qq"
-HY2_LINK="hysteria2://${HY2_PASSWORD}@${PUBLIC_IP}:443/?insecure=1&obfs=salamander&obfs-password=${HY2_OBFS}&sni=${REALITY_SNI}#XFreedom-${ROLE}-HY2"
+HY2_PIN=$(openssl x509 -noout -fingerprint -sha256 -in /etc/hysteria/server.crt | cut -d= -f2 | tr -d ':')
+HY2_LINK="hysteria2://${HY2_PASSWORD}@${PUBLIC_IP}:443/?insecure=1&pinSHA256=${HY2_PIN}&obfs=salamander&obfs-password=${HY2_OBFS}&sni=${REALITY_SNI}#XFreedom-${ROLE}-HY2"
 
 cat >"$BASE/client-links.txt" <<EOF
 # XFreedom ${ROLE}
