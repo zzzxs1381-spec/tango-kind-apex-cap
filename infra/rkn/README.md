@@ -68,9 +68,20 @@ The root passwords used for bootstrap are temporary credentials. Install and ver
 
 After a successful run:
 
-- Control Center is served on `http://EDGE_PUBLIC_IP/`.
+- Control Center listens only on edge `127.0.0.1:8080` and is not publicly exposed.
 - core1 hosts PostgreSQL, Qdrant, and the primary XFreedom application.
 - core2 hosts the application replica and uses PostgreSQL over the private AmneziaWG mesh.
 - edge health-checks/proxies the two core application nodes.
 - application and transport watchdogs are enabled as independent systemd timers.
 - the generated database and Better Auth secrets remain only in root-readable VPS `.env` files.
+
+
+## Open the private Control Center
+
+From your workstation, create an SSH tunnel to the edge node:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 root@EDGE_PUBLIC_IP
+```
+
+Then open `http://127.0.0.1:8080/` locally. The HTTP hop exists only inside the encrypted SSH connection; the server does not publish port 8080 or port 80 to the Internet.
