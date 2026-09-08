@@ -48,6 +48,11 @@ if ! command -v hysteria >/dev/null 2>&1; then
 fi
 
 install -d -m 700 /etc/xfreedom-rkn /etc/amnezia/amneziawg /etc/hysteria
+BACKUP_DIR="/etc/xfreedom-rkn/backup-$(date +%Y%m%d-%H%M%S)"
+install -d -m 700 "$BACKUP_DIR"
+[[ -f /usr/local/etc/xray/config.json ]] && cp -a /usr/local/etc/xray/config.json "$BACKUP_DIR/xray-config.json" || true
+[[ -f /etc/hysteria/config.yaml ]] && cp -a /etc/hysteria/config.yaml "$BACKUP_DIR/hysteria-config.yaml" || true
+[[ -f /etc/amnezia/amneziawg/awg0.conf ]] && cp -a /etc/amnezia/amneziawg/awg0.conf "$BACKUP_DIR/awg0.conf" || true
 
 cat >/etc/sysctl.d/99-xfreedom-rkn.conf <<'EOF'
 net.ipv4.ip_forward=1
@@ -104,9 +109,9 @@ if [[ ! -s /etc/hysteria/server.key || ! -s /etc/hysteria/server.crt ]]; then
 fi
 
 ufw allow 22/tcp
+ufw allow 80/tcp
 ufw allow 443/tcp
 ufw allow 443/udp
-ufw allow 51820/udp
 ufw --force enable
 
 systemctl enable --now fail2ban >/dev/null 2>&1 || true
