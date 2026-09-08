@@ -98,17 +98,19 @@ retry() {
 }
 
 echo
-echo "[1/8] Testing SSH access..."
+echo "[1/10] Testing SSH access..."
 retry 3 3 run_ssh "$EDGE_IP" "$EDGE_PASS" "echo edge-ok"
 retry 3 3 run_ssh "$CORE1_IP" "$CORE1_PASS" "echo core1-ok"
 retry 3 3 run_ssh "$CORE2_IP" "$CORE2_PASS" "echo core2-ok"
 
-echo "[2/8] Downloading pinned deployment scripts..."
-BASE_URL="https://raw.githubusercontent.com/${XF_REPO}/${XF_REF}/infra/rkn"
+echo "[2/10] Downloading pinned deployment scripts..."
+RAW_ROOT="https://raw.githubusercontent.com/${XF_REPO}/${XF_REF}"
+BASE_URL="$RAW_ROOT/infra/rkn"
 curl -fL --retry 4 --retry-delay 2 "$BASE_URL/node-bootstrap.sh" -o "$WORK/node-bootstrap.sh"
 curl -fL --retry 4 --retry-delay 2 "$BASE_URL/configure-node.sh" -o "$WORK/configure-node.sh"
-chmod 700 "$WORK/node-bootstrap.sh" "$WORK/configure-node.sh"
-bash -n "$WORK/node-bootstrap.sh" "$WORK/configure-node.sh"
+curl -fL --retry 4 --retry-delay 2 "$RAW_ROOT/infra/deploy-role.sh" -o "$WORK/deploy-role.sh"
+chmod 700 "$WORK/node-bootstrap.sh" "$WORK/configure-node.sh" "$WORK/deploy-role.sh"
+bash -n "$WORK/node-bootstrap.sh" "$WORK/configure-node.sh" "$WORK/deploy-role.sh"
 
 preflight() {
   local ip=$1 pass=$2 role=$3
@@ -128,7 +130,7 @@ preflight() {
     fi'
 }
 
-echo "[3/8] Inventory and port conflict checks..."
+echo "[3/10] Inventory and port conflict checks..."
 preflight "$EDGE_IP" "$EDGE_PASS" edge
 preflight "$CORE1_IP" "$CORE1_PASS" core1
 preflight "$CORE2_IP" "$CORE2_PASS" core2
@@ -139,10 +141,11 @@ stage_one() {
   run_ssh "$ip" "$pass" "mkdir -p /root/xfreedom-rkn-stage"
   run_scp "$ip" "$pass" "$WORK/node-bootstrap.sh" "/root/xfreedom-rkn-stage/node-bootstrap.sh"
   run_scp "$ip" "$pass" "$WORK/configure-node.sh" "/root/xfreedom-rkn-stage/configure-node.sh"
+  run_scp "$ip" "$pass" "$WORK/deploy-role.sh" "/root/xfreedom-rkn-stage/deploy-role.sh"
   run_ssh "$ip" "$pass" "chmod 700 /root/xfreedom-rkn-stage/*.sh && REALITY_SNI='$REALITY_SNI' /root/xfreedom-rkn-stage/node-bootstrap.sh '$role' '$ip' '$mesh'"
 }
 
-echo "[4/8] Installing Ubuntu network stack on all nodes..."
+echo "[4/10] Installing Ubuntu network stack on all nodes..."
 stage_one "$EDGE_IP" "$EDGE_PASS" edge "$EDGE_MESH"
 stage_one "$CORE1_IP" "$CORE1_PASS" core1 "$CORE1_MESH"
 stage_one "$CORE2_IP" "$CORE2_PASS" core2 "$CORE2_MESH"
@@ -212,7 +215,7 @@ EOF
   rm -f "$tmp"
 }
 
-echo "[5/8] Building private AmneziaWG full mesh..."
+echo "[5/10] Building private AmneziaWG full mesh..."
 write_cluster_env "$EDGE_IP" "$EDGE_PASS" "$CORE1_PUB" "$PSK_EDGE_CORE1" "$CORE1_IP" "$CORE1_MESH" "$CORE2_PUB" "$PSK_EDGE_CORE2" "$CORE2_IP" "$CORE2_MESH"
 write_cluster_env "$CORE1_IP" "$CORE1_PASS" "$EDGE_PUB" "$PSK_EDGE_CORE1" "$EDGE_IP" "$EDGE_MESH" "$CORE2_PUB" "$PSK_CORE1_CORE2" "$CORE2_IP" "$CORE2_MESH"
 write_cluster_env "$CORE2_IP" "$CORE2_PASS" "$EDGE_PUB" "$PSK_EDGE_CORE2" "$EDGE_IP" "$EDGE_MESH" "$CORE1_PUB" "$PSK_CORE1_CORE2" "$CORE1_IP" "$CORE1_MESH"
@@ -227,7 +230,7 @@ configure() {
   fi
 }
 
-echo "[6/8] Configuring REALITY, Hysteria2 and watchdog..."
+echo "[6/10] Configuring REALITY, Hysteria2 and watchdog..."
 configure "$CORE1_IP" "$CORE1_PASS" core1
 configure "$CORE2_IP" "$CORE2_PASS" core2
 configure "$EDGE_IP" "$EDGE_PASS" edge
@@ -249,12 +252,87 @@ verify_node() {
     echo services-ok"
 }
 
-echo "[7/8] End-to-end verification..."
+echo "[7/10] End-to-end verification..."
 verify_node "$EDGE_IP" "$EDGE_PASS" edge "$CORE1_MESH" "$CORE2_MESH"
 verify_node "$CORE1_IP" "$CORE1_PASS" core1 "$EDGE_MESH" "$CORE2_MESH"
 verify_node "$CORE2_IP" "$CORE2_PASS" core2 "$EDGE_MESH" "$CORE1_MESH"
 
-echo "[8/8] Collecting client profiles..."
+echo "[8/10] Deploying XFreedom Control Center, database and memory services..."
+DB_PASSWORD=$(openssl rand -hex 24)
+BETTER_AUTH_SECRET=$(openssl rand -base64 48 | tr -d '\n')
+
+write_platform_env() {
+  local ip=$1 pass=$2 role=$3
+  local tmp
+  tmp=$(mktemp)
+  case "$role" in
+    edge)
+      cat >"$tmp" <<EOF
+WG_IP=$EDGE_MESH
+CORE_A_WG_IP=$CORE1_MESH
+CORE_B_WG_IP=$CORE2_MESH
+XF_NODE_NAME=edge
+XF_RELEASE=$XF_REF
+BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
+EOF
+      ;;
+    primary)
+      cat >"$tmp" <<EOF
+WG_IP=$CORE1_MESH
+XF_NODE_NAME=core1
+XF_RELEASE=$XF_REF
+POSTGRES_DB=xfreedom
+POSTGRES_USER=xfreedom
+POSTGRES_PASSWORD=$DB_PASSWORD
+DATABASE_URL=postgresql://xfreedom:$DB_PASSWORD@postgres:5432/xfreedom
+BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
+EOF
+      ;;
+    secondary)
+      cat >"$tmp" <<EOF
+WG_IP=$CORE2_MESH
+XF_NODE_NAME=core2
+XF_RELEASE=$XF_REF
+DATABASE_URL=postgresql://xfreedom:$DB_PASSWORD@$CORE1_MESH:5432/xfreedom
+BETTER_AUTH_SECRET=$BETTER_AUTH_SECRET
+EOF
+      ;;
+  esac
+  run_scp "$ip" "$pass" "$tmp" "/root/xfreedom-rkn-stage/platform.env"
+  run_ssh "$ip" "$pass" "chmod 600 /root/xfreedom-rkn-stage/platform.env"
+  rm -f "$tmp"
+}
+
+deploy_platform_role() {
+  local ip=$1 pass=$2 role=$3
+  echo "--- platform $role $ip"
+  if ! retry 2 5 run_ssh "$ip" "$pass" "XF_REF='$XF_REF' XF_ENV_FILE=/root/xfreedom-rkn-stage/platform.env /root/xfreedom-rkn-stage/deploy-role.sh '$role'"; then
+    echo "Platform deployment diagnostics for $role:" >&2
+    run_ssh "$ip" "$pass" "cd /opt/xfreedom/app 2>/dev/null && docker compose -f compose.$role.yml ps && docker compose -f compose.$role.yml logs --tail=120 || true" || true
+    exit 1
+  fi
+}
+
+write_platform_env "$CORE1_IP" "$CORE1_PASS" primary
+write_platform_env "$CORE2_IP" "$CORE2_PASS" secondary
+write_platform_env "$EDGE_IP" "$EDGE_PASS" edge
+
+deploy_platform_role "$CORE1_IP" "$CORE1_PASS" primary
+deploy_platform_role "$CORE2_IP" "$CORE2_PASS" secondary
+deploy_platform_role "$EDGE_IP" "$EDGE_PASS" edge
+
+echo "[9/10] Verifying XFreedom platform end to end..."
+run_ssh "$CORE1_IP" "$CORE1_PASS" "curl -fsS --max-time 8 http://$CORE1_MESH:3000/api/health"
+run_ssh "$CORE2_IP" "$CORE2_PASS" "curl -fsS --max-time 8 http://$CORE2_MESH:3000/api/health"
+run_ssh "$EDGE_IP" "$EDGE_PASS" "curl -fsS --max-time 8 http://127.0.0.1/healthz"
+run_ssh "$EDGE_IP" "$EDGE_PASS" "curl -fsS --max-time 10 http://127.0.0.1/api/health"
+if ! retry 3 3 curl -fsS --max-time 10 "http://$EDGE_IP/api/health"; then
+  echo "External HTTP check failed although local edge checks passed." >&2
+  echo "Check provider firewall/security-group rules for TCP/80." >&2
+  exit 1
+fi
+
+echo "[10/10] Collecting client profiles..."
 {
   echo "### EDGE $EDGE_IP"
   run_ssh "$EDGE_IP" "$EDGE_PASS" "cat /etc/xfreedom-rkn/client-links.txt"
@@ -275,6 +353,7 @@ echo "XFreedom cluster is UP"
 echo "AmneziaWG mesh: $EDGE_MESH <-> $CORE1_MESH <-> $CORE2_MESH"
 echo "TCP 443: VLESS + REALITY"
 echo "UDP 443: Hysteria2 + Salamander"
+echo "Control Center: http://$EDGE_IP/"
 echo "profiles: $RESULTS"
 echo "========================================"
 cat "$RESULTS"
