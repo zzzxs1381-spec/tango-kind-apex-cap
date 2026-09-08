@@ -1,0 +1,40 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "XFreedom",
+      "hasCanvas": false,
+      "bodyTextLen": 94,
+      "bodyTextHash": "ad657df7f66b974109deecbcde28944770f3de0de753a988e9835b11b08ffefb",
+      "bodyTextPrefix": "XSERVIS XFreedom − Подключить + Нажми «Подключить» — маршрут соб",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "XFreedom",
+      "hasCanvas": false,
+      "bodyTextLen": 94,
+      "bodyTextHash": "ad657df7f66b974109deecbcde28944770f3de0de753a988e9835b11b08ffefb",
+      "bodyTextPrefix": "XSERVIS XFreedom − Подключить + Нажми «Подключить» — маршрут соб",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": true,
+  "baselineReasons": [
+    "mobile: body text replaced (similar length, page start changed)"
+  ]
+}

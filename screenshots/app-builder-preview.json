@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "XFreedom",
+      "hasCanvas": false,
+      "bodyTextLen": 94,
+      "bodyTextHash": "ad657df7f66b974109deecbcde28944770f3de0de753a988e9835b11b08ffefb",
+      "bodyTextPrefix": "XSERVIS XFreedom − Подключить + Нажми «Подключить» — маршрут соб",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "XFreedom",
+      "hasCanvas": false,
+      "bodyTextLen": 111,
+      "bodyTextHash": "17855259cd9505664dca868616b5b3a416e1a0ea497ccb5c4ea4e3dee8f3a75f",
+      "bodyTextPrefix": "XFreedom XSERVIS XSERVIS XFreedom − Подключить + Нажми «Подключи",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
