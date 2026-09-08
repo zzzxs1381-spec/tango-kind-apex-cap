@@ -25,4 +25,11 @@ jobs:
       - run: npm run typecheck
       - name: Core tests
         run: node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts
-      - run: npm run build
+      - name: Vercel production build
+        run: npm run build
+      - name: VPS node_server production build
+        env:
+          NITRO_PRESET: node_server
+        run: npm run build
+      - name: Docker image build
+        run: docker build -t xfreedom-ci .
