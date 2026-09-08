@@ -1,3 +1,5 @@
+> **Russia/RKN deployments:** the older plain-WireGuard mesh documented below is retained as a generic baseline only. For RU-connected production use, prefer [infra/rkn](./rkn/README.md), which replaces the mesh with AmneziaWG and adds REALITY/Hysteria2 transport diversity.
+
 # XFreedom three-node VPS cluster
 
 Roles:

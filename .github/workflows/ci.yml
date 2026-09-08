@@ -46,7 +46,7 @@ jobs:
           docker compose -f compose.primary.yml config >/dev/null
           docker compose -f compose.secondary.yml config >/dev/null
           docker compose -f compose.edge.yml config >/dev/null
-          bash -n infra/bootstrap-node.sh infra/render-wireguard.sh infra/deploy-role.sh infra/watchdog.sh
+          bash -n infra/bootstrap-node.sh infra/render-wireguard.sh infra/deploy-role.sh infra/watchdog.sh infra/rkn/node-bootstrap.sh infra/rkn/configure-node.sh infra/rkn/cluster-bootstrap.sh
           rm -f .env
       - name: Docker runtime smoke test
         run: |
