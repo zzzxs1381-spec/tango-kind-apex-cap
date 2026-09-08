@@ -28,6 +28,40 @@ apt-get update
 apt-get install -y ca-certificates curl wget jq openssl qrencode ufw fail2ban   software-properties-common python3-launchpadlib gnupg2 rsync git iproute2   iptables nftables uuid-runtime
 apt-get install -y "linux-headers-$(uname -r)" || apt-get install -y linux-headers-generic
 
+# Preserve an existing Docker installation. Install current Docker CE only when
+# Docker is absent, then ensure the Compose v2 plugin exists.
+if ! command -v docker >/dev/null 2>&1; then
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
+  cat >/etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: ${UBUNTU_CODENAME:-$VERSION_CODENAME}
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+  apt-get update
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+fi
+
+systemctl enable --now docker
+
+if ! docker compose version >/dev/null 2>&1; then
+  COMPOSE_VERSION=v5.5.0
+  case "$(uname -m)" in
+    x86_64|amd64) COMPOSE_ARCH=x86_64 ;;
+    aarch64|arm64) COMPOSE_ARCH=aarch64 ;;
+    *) echo "Unsupported architecture for Compose fallback: $(uname -m)" >&2; exit 1 ;;
+  esac
+  install -d -m 0755 /usr/local/lib/docker/cli-plugins
+  curl -fL --retry 4 --retry-delay 2     "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-${COMPOSE_ARCH}"     -o /usr/local/lib/docker/cli-plugins/docker-compose
+  chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
+fi
+
+docker compose version >/dev/null
+
 if ! grep -Rqs "amnezia/ppa" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
   add-apt-repository -y ppa:amnezia/ppa
 fi
@@ -147,3 +181,5 @@ echo "MESH_IP=$MESH_IP"
 echo "AWG_PUBLIC=$(cat "$AWG_PUB_FILE")"
 echo "XRAY_VERSION=$(xray version | head -n1)"
 echo "HYSTERIA_VERSION=$(hysteria version 2>/dev/null | head -n1 || true)"
+echo "DOCKER_VERSION=$(docker --version)"
+echo "COMPOSE_VERSION=$(docker compose version --short 2>/dev/null || docker compose version)"
