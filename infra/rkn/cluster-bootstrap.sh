@@ -173,7 +173,12 @@ unique_u32() {
 
 AWG_PORT=$(rand_u16 20000 50000)
 AWG_S1=$(rand_u16 40 120)
-while :; do AWG_S2=$(rand_u16 40 120); [[ "$AWG_S2" != "$AWG_S1" ]] && break; done
+while :; do
+  AWG_S2=$(rand_u16 40 120)
+  [[ "$AWG_S2" != "$AWG_S1" ]] || continue
+  [[ "$AWG_S2" -ne $((AWG_S1 + 56)) ]] || continue
+  break
+done
 read -r AWG_H1 AWG_H2 AWG_H3 AWG_H4 < <(unique_u32)
 PSK_EDGE_CORE1=$(openssl rand -base64 32 | tr -d '\n')
 PSK_EDGE_CORE2=$(openssl rand -base64 32 | tr -d '\n')
