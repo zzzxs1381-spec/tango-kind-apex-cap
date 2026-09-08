@@ -1,6 +1,6 @@
 # XFreedom RKN-resilient transport layer
 
-This directory is the censorship-resilient transport layer for the three-node XFreedom cluster.
+This directory is the censorship-resilient transport and one-shot platform deployment layer for the three-node XFreedom cluster.
 
 ## Topology
 
@@ -42,6 +42,11 @@ The script asks for all three root passwords with hidden input. Passwords are ke
 - starts VLESS/REALITY TCP 443 and Hysteria2 UDP 443;
 - enables a one-minute systemd watchdog;
 - checks the mesh, services and listeners;
+- deploys Docker/Compose on the three nodes without replacing an existing Docker installation;
+- deploys PostgreSQL + Qdrant + XFreedom app on core1;
+- deploys a warm XFreedom app replica on core2;
+- deploys the public Control Center edge proxy with app failover;
+- verifies core health and the public edge endpoint;
 - collects all client links into `/root/xfreedom-rkn-controller/client-links.txt`.
 
 ## Client policy
@@ -57,3 +62,15 @@ A transport cannot create connectivity when an ISP is not carrying arbitrary pac
 ## After the first successful deployment
 
 The root passwords used for bootstrap are temporary credentials. Install and verify SSH public-key access, rotate the passwords, and only then disable password authentication. Do not disable password SSH before key login is confirmed or you can lock yourself out.
+
+
+## Platform result
+
+After a successful run:
+
+- Control Center is served on `http://EDGE_PUBLIC_IP/`.
+- core1 hosts PostgreSQL, Qdrant, and the primary XFreedom application.
+- core2 hosts the application replica and uses PostgreSQL over the private AmneziaWG mesh.
+- edge health-checks/proxies the two core application nodes.
+- application and transport watchdogs are enabled as independent systemd timers.
+- the generated database and Better Auth secrets remain only in root-readable VPS `.env` files.
