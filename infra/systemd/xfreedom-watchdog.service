@@ -1,0 +1,8 @@
+[Unit]
+Description=XFreedom self-healing watchdog
+After=docker.service wg-quick@wg0.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/xfreedom-watchdog
