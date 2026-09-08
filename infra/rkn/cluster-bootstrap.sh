@@ -324,13 +324,8 @@ deploy_platform_role "$EDGE_IP" "$EDGE_PASS" edge
 echo "[9/10] Verifying XFreedom platform end to end..."
 run_ssh "$CORE1_IP" "$CORE1_PASS" "curl -fsS --max-time 8 http://$CORE1_MESH:3000/api/health"
 run_ssh "$CORE2_IP" "$CORE2_PASS" "curl -fsS --max-time 8 http://$CORE2_MESH:3000/api/health"
-run_ssh "$EDGE_IP" "$EDGE_PASS" "curl -fsS --max-time 8 http://127.0.0.1/healthz"
-run_ssh "$EDGE_IP" "$EDGE_PASS" "curl -fsS --max-time 10 http://127.0.0.1/api/health"
-if ! retry 3 3 curl -fsS --max-time 10 "http://$EDGE_IP/api/health"; then
-  echo "External HTTP check failed although local edge checks passed." >&2
-  echo "Check provider firewall/security-group rules for TCP/80." >&2
-  exit 1
-fi
+run_ssh "$EDGE_IP" "$EDGE_PASS" "curl -fsS --max-time 8 http://127.0.0.1:8080/healthz"
+run_ssh "$EDGE_IP" "$EDGE_PASS" "curl -fsS --max-time 10 http://127.0.0.1:8080/api/health"
 
 echo "[10/10] Collecting client profiles..."
 {
@@ -353,7 +348,7 @@ echo "XFreedom cluster is UP"
 echo "AmneziaWG mesh: $EDGE_MESH <-> $CORE1_MESH <-> $CORE2_MESH"
 echo "TCP 443: VLESS + REALITY"
 echo "UDP 443: Hysteria2 + Salamander"
-echo "Control Center: http://$EDGE_IP/"
+echo "Control Center is private: SSH-tunnel edge localhost:8080"
 echo "profiles: $RESULTS"
 echo "========================================"
 cat "$RESULTS"
