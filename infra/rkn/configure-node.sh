@@ -91,7 +91,7 @@ cat >"$XRAY_CFG" <<EOF
       "port": 443,
       "protocol": "vless",
       "settings": {
-        "clients": [
+        "users": [
           { "id": "${XRAY_UUID}", "flow": "xtls-rprx-vision", "email": "xfreedom-edge" }
         ],
         "decryption": "none"
@@ -118,12 +118,12 @@ cat >"$XRAY_CFG" <<EOF
     {
       "tag": "core-1",
       "protocol": "socks",
-      "settings": { "servers": [ { "address": "${CORE1_MESH_IP}", "port": 1080 } ] }
+      "settings": { "address": "${CORE1_MESH_IP}", "port": 1080 }
     },
     {
       "tag": "core-2",
       "protocol": "socks",
-      "settings": { "servers": [ { "address": "${CORE2_MESH_IP}", "port": 1080 } ] }
+      "settings": { "address": "${CORE2_MESH_IP}", "port": 1080 }
     },
     { "tag": "direct-last-resort", "protocol": "freedom" }
   ],
@@ -160,7 +160,7 @@ cat >"$XRAY_CFG" <<EOF
       "port": 443,
       "protocol": "vless",
       "settings": {
-        "clients": [
+        "users": [
           { "id": "${XRAY_UUID}", "flow": "xtls-rprx-vision", "email": "xfreedom-${ROLE}" }
         ],
         "decryption": "none"
@@ -271,9 +271,10 @@ masquerade:
 EOF
 fi
 
-hysteria server -c "$HY2_CFG" --check >/dev/null
 systemctl enable hysteria-server.service
 systemctl restart hysteria-server.service
+sleep 1
+systemctl is-active --quiet hysteria-server.service || { journalctl --no-pager -n 80 -u hysteria-server.service >&2; exit 1; }
 
 cat >"$BASE/watchdog.sh" <<'EOF'
 #!/usr/bin/env bash
