@@ -19,7 +19,11 @@ esac
 
 cd "${APP_ROOT:-/opt/xfreedom/app}"
 
-if ! ip link show wg0 >/dev/null 2>&1; then
+if ip link show awg0 >/dev/null 2>&1; then
+  :
+elif systemctl list-unit-files awg-quick@awg0.service >/dev/null 2>&1; then
+  systemctl restart awg-quick@awg0.service || true
+elif ! ip link show wg0 >/dev/null 2>&1; then
   systemctl restart wg-quick@wg0 || true
 fi
 
