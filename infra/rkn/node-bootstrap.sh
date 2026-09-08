@@ -4,7 +4,7 @@ set -Eeuo pipefail
 ROLE=${1:?usage: node-bootstrap.sh edge|core1|core2 PUBLIC_IP MESH_IP}
 PUBLIC_IP=${2:?public IP required}
 MESH_IP=${3:?mesh IP required}
-REALITY_SNI=${REALITY_SNI:-www.microsoft.com}
+REALITY_SNI=${REALITY_SNI:-auto}
 
 case "$ROLE" in edge|core1|core2) ;; *) echo "invalid role: $ROLE" >&2; exit 2;; esac
 
@@ -45,6 +45,25 @@ fi
 
 if ! command -v hysteria >/dev/null 2>&1; then
   HYSTERIA_USER=root bash <(curl -fsSL https://get.hy2.sh/)
+fi
+
+if [[ "$REALITY_SNI" == "auto" ]]; then
+  if [[ "$ROLE" == "edge" ]]; then
+    REALITY_CANDIDATES=(vk.com yandex.ru ozon.ru)
+  else
+    REALITY_CANDIDATES=(www.samsung.com www.lenovo.com www.oracle.com www.mozilla.org)
+  fi
+  REALITY_SNI=""
+  for candidate in "${REALITY_CANDIDATES[@]}"; do
+    if timeout 12 xray tls ping "$candidate" >/tmp/xfreedom-reality-probe.log 2>&1; then
+      REALITY_SNI="$candidate"
+      break
+    fi
+  done
+  if [[ -z "$REALITY_SNI" ]]; then
+    echo "No REALITY target passed xray tls ping; see /tmp/xfreedom-reality-probe.log" >&2
+    exit 1
+  fi
 fi
 
 install -d -m 700 /etc/xfreedom-rkn /etc/amnezia/amneziawg /etc/hysteria
