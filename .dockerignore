@@ -6,3 +6,6 @@ node_modules
 artifacts
 attachments
 screenshots
+.vercel
+__pycache__
+*.pyc
