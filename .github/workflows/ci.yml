@@ -3,6 +3,7 @@ name: XFreedom CI
 on:
   push:
     branches:
+      - main
       - xfreedom-control-center
   pull_request:
     branches:
