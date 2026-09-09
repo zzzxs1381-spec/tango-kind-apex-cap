@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 umask 077
+export GIT_OPTIONAL_LOCKS=0
 
 SOURCE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 ROOT=/opt/xfreedom-solo
@@ -103,6 +104,8 @@ EOF
   apt-get -o DPkg::Lock::Timeout=120 install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 systemctl enable --now docker
+DOCKER_MAJOR=$(docker version --format '{{.Server.Version}}' | cut -d. -f1)
+[[ $DOCKER_MAJOR =~ ^[0-9]+$ && $DOCKER_MAJOR -ge 28 ]] || { echo 'Нужен Docker Engine 28+ для изоляции опубликованных loopback-портов.' >&2; exit 1; }
 
 RELEASE="$ROOT/releases/$REF"
 install -d -m 755 "$RELEASE"

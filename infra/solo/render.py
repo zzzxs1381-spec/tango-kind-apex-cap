@@ -46,7 +46,7 @@ def create_state(xray, ip, sni):
     values = {k.strip().lower().replace(' ', ''): v.strip()
               for k, v in (line.split(':', 1) for line in output.splitlines() if ':' in line)}
     private = values.get('privatekey')
-    public = values.get('password') or values.get('publickey')
+    public = values.get('password(publickey)') or values.get('password') or values.get('publickey')
     if not all(v and re.fullmatch(r'[A-Za-z0-9_-]{43}', v) for v in (private, public)):
         raise ValueError('Unrecognized Xray x25519 output')
     return dict(schema=1, public_ip=ip, sni=sni, uuid=str(uuid.uuid4()),

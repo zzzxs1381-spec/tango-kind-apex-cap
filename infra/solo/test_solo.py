@@ -25,7 +25,7 @@ class Rendering(unittest.TestCase):
     def test_rerun_preserves_all_credentials_and_certificates(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
-            pair = 'PrivateKey: ' + 'A' * 43 + '\nPassword: ' + 'B' * 43 + '\n'
+            pair = 'PrivateKey: ' + 'A' * 43 + '\nPassword (PublicKey): ' + 'B' * 43 + '\nHash32: unused\n'
             with patch('subprocess.check_output', return_value=pair) as keygen:
                 generate(base, base, '8.8.8.8', 'example.com', 'a' * 40)
                 before = {p.name: p.read_bytes() for p in base.iterdir() if p.is_file()}

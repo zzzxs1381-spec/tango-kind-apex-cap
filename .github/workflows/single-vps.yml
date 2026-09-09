@@ -26,6 +26,22 @@ jobs:
           sudo systemctl stop xfreedom-solo-repair.timer xfreedom-solo-probe.timer xfreedom-solo-backup.timer
       - name: Authentication and private service isolation
         run: sudo env XF_LIVE_TEST=1 python3 -m unittest discover -s infra/solo -p 'test_*.py' -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Render the deployed private panel on desktop and mobile
+        run: |
+          npm ci --no-audit --no-fund
+          sudo mkdir -p /workspace/screenshots
+          sudo chown "$USER" /workspace/screenshots
+          BROWSER_EXECUTABLE_PATH=$(command -v google-chrome) node scripts/browser-smoke.mjs http://127.0.0.1:8080/admin /workspace/screenshots/solo-production.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: private-panel-browser-check
+          path: /workspace/screenshots/
+          retention-days: 7
       - name: Database persistence after container replacement
         run: |
           DC='docker compose --env-file /etc/xfreedom-solo/compose.env -f /opt/xfreedom-solo/current/infra/solo/compose.yaml'
