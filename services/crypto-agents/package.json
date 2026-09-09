@@ -1,0 +1,19 @@
+{
+  "name": "xfreedom-crypto-agent-mesh",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "start": "node src/index.mjs",
+    "check": "node --check src/index.mjs && node --check src/bus.mjs && node --check src/llm.mjs && node --check src/qdrant.mjs && node --check src/binance.mjs"
+  },
+  "dependencies": {
+    "@nats-io/jetstream": "3.4.0",
+    "@nats-io/transport-node": "3.4.0",
+    "@openai/agents": "0.17.0",
+    "@qdrant/js-client-rest": "1.19.0",
+    "pg": "8.16.3",
+    "ws": "8.21.3",
+    "zod": "4.4.0"
+  }
+}

@@ -1,0 +1,123 @@
+services:
+  nats:
+    image: nats:2.11-alpine
+    command: ["-js", "-sd", "/data"]
+    restart: unless-stopped
+    volumes: ["nats_data:/data"]
+
+  market-monitor:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: &agent-env
+      AGENT_ROLE: market-monitor
+      NATS_URL: nats://nats:4222
+      QDRANT_URL: http://qdrant:6333
+      DATABASE_URL: ${DATABASE_URL}
+      SPOT_SYMBOLS: ${SPOT_SYMBOLS:-btcusdt,ethusdt,solusdt,bnbusdt,xrpusdt}
+    depends_on: [nats]
+
+  news-monitor:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment:
+      <<: *agent-env
+      AGENT_ROLE: news-monitor
+      AGENT_HTTP_PORT: 8787
+      X_BEARER_TOKEN: ${X_BEARER_TOKEN:-}
+    depends_on: [nats]
+
+  wallet-monitor:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment:
+      <<: *agent-env
+      AGENT_ROLE: wallet-monitor
+      AGENT_HTTP_PORT: 8788
+      ARKHAM_WEBHOOK_SECRET: ${ARKHAM_WEBHOOK_SECRET:-}
+    depends_on: [nats]
+
+  feature-market:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: feature-market }
+    depends_on: [nats]
+  feature-news:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: feature-news }
+    depends_on: [nats]
+  feature-wallet:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: feature-wallet }
+    depends_on: [nats]
+
+  strategy-trend:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: strategy-agent, STRATEGY: trend, OPENAI_API_KEY: ${OPENAI_API_KEY}, OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-sol} }
+    depends_on: [nats]
+  strategy-event:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: strategy-agent, STRATEGY: event, OPENAI_API_KEY: ${OPENAI_API_KEY}, OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-sol} }
+    depends_on: [nats]
+  strategy-whale:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: strategy-agent, STRATEGY: whale, OPENAI_API_KEY: ${OPENAI_API_KEY}, OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-sol} }
+    depends_on: [nats]
+  strategy-smallcap:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: strategy-agent, STRATEGY: smallcap, OPENAI_API_KEY: ${OPENAI_API_KEY}, OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-sol} }
+    depends_on: [nats]
+
+  fusion-agent:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: fusion-agent }
+    depends_on: [nats]
+
+  risk-agent:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment:
+      <<: *agent-env
+      AGENT_ROLE: risk-agent
+      MIN_A_CLASS_PROBABILITY: ${MIN_A_CLASS_PROBABILITY:-0.85}
+    depends_on: [nats]
+
+  execution-agent:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment:
+      <<: *agent-env
+      AGENT_ROLE: execution-agent
+      EXECUTION_MODE: ${EXECUTION_MODE:-paper}
+      MAX_ORDER_QUOTE: ${MAX_ORDER_QUOTE:-100}
+      BINANCE_API_KEY: ${BINANCE_API_KEY:-}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET:-}
+      BINANCE_BASE_URL: ${BINANCE_BASE_URL:-https://api.binance.com}
+    depends_on: [nats]
+
+  evaluator-agent:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: evaluator-agent }
+    depends_on: [nats]
+
+  memory-agent:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: memory-agent }
+    depends_on: [nats]
+
+  crypto-supervisor:
+    build: ./services/crypto-agents
+    restart: unless-stopped
+    environment: { <<: *agent-env, AGENT_ROLE: supervisor }
+    depends_on: [nats]
+
+volumes:
+  nats_data:
