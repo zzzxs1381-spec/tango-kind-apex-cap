@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import struct
@@ -91,7 +92,15 @@ def test_transport(binary, kind, config, port, directory, targets=None, check_ud
                     udp_ok = True
                 except (OSError, IndexError, struct.error):
                     pass
-            return {'tcp': tcp_ok, 'udp_dns': udp_ok if check_udp else None}
+            result = {'tcp': tcp_ok, 'udp_dns': udp_ok if check_udp else None}
+            if not tcp_ok:
+                log.flush()
+                detail = (Path(directory) / f'{kind}-probe.log').read_text(errors='replace')[-2500:]
+                # Keep diagnostics useful without emitting UUIDs, keys or passwords.
+                result['diagnostic'] = re.sub(r'[A-Za-z0-9_+/=-]{32,}', '[redacted]', detail)
+                result['client_exit_code'] = proc.poll()
+                result['socks_listening'] = listening
+            return result
         finally:
             proc.terminate()
             try:
