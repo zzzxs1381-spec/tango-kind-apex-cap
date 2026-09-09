@@ -1,0 +1,75 @@
+name: Single VPS acceptance
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths: ['infra/solo/**', 'Dockerfile', '.dockerignore', '.github/workflows/single-vps.yml']
+permissions:
+  contents: read
+jobs:
+  install-and-recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Regression checks
+        run: |
+          bash -n infra/solo/bootstrap.sh infra/solo/install.sh
+          python3 -m unittest discover -s infra/solo -p 'test_*.py' -v
+      - name: Install the complete stack on an ephemeral Ubuntu host
+        run: |
+          PUBLIC_IP=$(curl -4fsS --max-time 15 https://api.ipify.org)
+          sudo bash infra/solo/install.sh "$PUBLIC_IP"
+          sudo systemctl stop xfreedom-solo-repair.timer xfreedom-solo-probe.timer xfreedom-solo-backup.timer
+      - name: Authentication and private service isolation
+        run: sudo env XF_LIVE_TEST=1 python3 -m unittest discover -s infra/solo -p 'test_*.py' -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Render the deployed private panel on desktop and mobile
+        run: |
+          npm ci --no-audit --no-fund
+          sudo mkdir -p /workspace/screenshots
+          sudo chown "$USER" /workspace/screenshots
+          BROWSER_EXECUTABLE_PATH=$(command -v google-chrome) node scripts/browser-smoke.mjs http://127.0.0.1:8080/admin /workspace/screenshots/solo-production.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: private-panel-browser-check
+          path: /workspace/screenshots/
+          retention-days: 7
+      - name: Database persistence after container replacement
+        run: |
+          DC='docker compose --env-file /etc/xfreedom-solo/compose.env -f /opt/xfreedom-solo/current/infra/solo/compose.yaml'
+          sudo $DC exec -T postgres psql -U xfreedom -d xfreedom -v ON_ERROR_STOP=1 -c 'CREATE TABLE acceptance_probe (value integer); INSERT INTO acceptance_probe VALUES (42)'
+          sudo $DC up -d --force-recreate --wait --wait-timeout 120 postgres
+          test "$(sudo $DC exec -T postgres psql -U xfreedom -d xfreedom -Atc 'SELECT value FROM acceptance_probe')" = 42
+          sudo $DC exec -T postgres psql -U xfreedom -d xfreedom -c 'DROP TABLE acceptance_probe'
+      - name: Restore the logical database backup into a separate database
+        run: |
+          DC='docker compose --env-file /etc/xfreedom-solo/compose.env -f /opt/xfreedom-solo/current/infra/solo/compose.yaml'
+          sudo $DC exec -T postgres createdb -U xfreedom restore_probe
+          BACKUP=$(sudo find /var/lib/xfreedom-solo/backups -name postgres.dump | sort | tail -1)
+          sudo cat "$BACKUP" | sudo $DC exec -T postgres pg_restore -U xfreedom -d restore_probe --exit-on-error
+          sudo $DC exec -T postgres dropdb -U xfreedom restore_probe
+      - name: Recover a stopped transport
+        run: |
+          sudo systemctl stop xfreedom-xray
+          sudo xfreedom-solo repair
+          sudo systemctl is-active --quiet xfreedom-xray
+          sudo xfreedom-solo probe
+      - name: Re-run without rotating client credentials
+        run: |
+          sudo sha256sum /etc/xfreedom-solo/state.json /etc/xfreedom-solo/server.crt > /tmp/identity.sha256
+          PUBLIC_IP=$(sudo python3 -c 'import json; print(json.load(open("/etc/xfreedom-solo/state.json"))["public_ip"])')
+          sudo bash infra/solo/install.sh "$PUBLIC_IP"
+          sudo sha256sum -c /tmp/identity.sha256
+      - name: Failure diagnostics (no client credentials)
+        if: failure()
+        run: |
+          sudo journalctl --no-pager -n 80 -u xfreedom-xray -u xfreedom-hysteria || true
+          sudo docker compose --env-file /etc/xfreedom-solo/compose.env -f /opt/xfreedom-solo/current/infra/solo/compose.yaml logs --tail=50 || true

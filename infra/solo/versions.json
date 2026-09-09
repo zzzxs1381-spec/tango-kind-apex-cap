@@ -1,0 +1,36 @@
+{
+  "checked_at": "2026-09-09",
+  "xray": {
+    "version": "v26.3.27",
+    "channel": "stable",
+    "upstream_prerelease": "v26.9.9",
+    "assets": {
+      "amd64": {
+        "url": "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip",
+        "sha256": "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae",
+        "format": "zip"
+      },
+      "arm64": {
+        "url": "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-arm64-v8a.zip",
+        "sha256": "4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c",
+        "format": "zip"
+      }
+    }
+  },
+  "hysteria": {
+    "version": "app/v2.12.2",
+    "channel": "stable",
+    "assets": {
+      "amd64": {
+        "url": "https://github.com/HyNetworks/hysteria/releases/download/app/v2.12.2/hysteria-linux-amd64",
+        "sha256": "6493dfffd55b5883f64c76c63880ecc32988f0c568c9ca9014907877b4d55f94",
+        "format": "binary"
+      },
+      "arm64": {
+        "url": "https://github.com/HyNetworks/hysteria/releases/download/app/v2.12.2/hysteria-linux-arm64",
+        "sha256": "ebfacc1ec3a0edfd742cd68ce17f292a6092e606b9d11f99b035c1d888f3d709",
+        "format": "binary"
+      }
+    }
+  }
+}
