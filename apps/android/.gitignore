@@ -1,0 +1,7 @@
+.gradle/
+local.properties
+**/build/
+.native-cache/
+app/libs/*.aar
+app/libs/*.jar
+!app/libs/.gitkeep
