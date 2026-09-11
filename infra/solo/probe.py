@@ -61,9 +61,15 @@ def udp_dns(port):
 
 
 def tcp_request(port, target):
-    return subprocess.run(['curl', '--silent', '--show-error', '--fail',
+    result = subprocess.run(['curl', '--silent', '--show-error', '--fail',
         '--max-time', '15', '--noproxy', '', '--socks5-hostname', f'127.0.0.1:{port}',
-        target, '-o', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        target, '-o', '/dev/null'], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        text=True)
+    # Targets are fixed public control URLs. Preserve only a short stderr tail;
+    # no proxy credentials are present in the command or output.
+    error = re.sub(r'[A-Za-z0-9_+/=-]{32,}', '[redacted]', result.stderr.strip())[-600:]
+    return {'target': target, 'ok': result.returncode == 0,
+            'exit_code': result.returncode, 'error': error}
 
 
 def test_transport(binary, kind, config, port, directory, targets=None, check_udp=True):
@@ -84,7 +90,8 @@ def test_transport(binary, kind, config, port, directory, targets=None, check_ud
                         break
                 except OSError:
                     time.sleep(.1)
-            tcp_ok = listening and any(tcp_request(port, target) for target in targets)
+            target_checks = [tcp_request(port, target) for target in targets] if listening else []
+            tcp_ok = listening and any(check['ok'] for check in target_checks)
             udp_ok = False
             if tcp_ok and check_udp:
                 try:
@@ -100,6 +107,7 @@ def test_transport(binary, kind, config, port, directory, targets=None, check_ud
                 result['diagnostic'] = re.sub(r'[A-Za-z0-9_+/=-]{32,}', '[redacted]', detail)
                 result['client_exit_code'] = proc.poll()
                 result['socks_listening'] = listening
+                result['target_checks'] = target_checks
             return result
         finally:
             proc.terminate()
