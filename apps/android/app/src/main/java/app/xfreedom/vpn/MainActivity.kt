@@ -85,8 +85,10 @@ class MainActivity : Activity() {
             REQUEST_PROFILE -> {
                 if (resultCode != RESULT_OK) return
                 val uri = data?.data ?: return
-                val result = runCatching { readLimitedUtf8(uri, MAX_PROFILE_BYTES) }
-                    .flatMap { ProfileStore.importClientJson(this, it) }
+                val result = runCatching {
+                    val raw = readLimitedUtf8(uri, MAX_PROFILE_BYTES)
+                    ProfileStore.importClientJson(this, raw).getOrThrow()
+                }
                 result.onSuccess {
                     renderState(
                         XFreedomVpnService.STATE_DISCONNECTED,
