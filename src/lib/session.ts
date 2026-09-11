@@ -34,7 +34,7 @@ export type Person = {
 };
 
 type S = {
-  phase: "idle" | "flying" | "on";
+  phase: "idle" | "flying" | "diagnosed" | "on";
   status: string;
   dest: string;
   person: Person;
@@ -62,7 +62,7 @@ export const useApp = create<S>()(
   persist(
     (set, get) => ({
       phase: "idle",
-      status: "Нажми «Подключить» — маршрут соберётся сам",
+      status: "Нажми «Проверить сеть» — браузер выполнит безопасную диагностику",
       dest: "Франкфурт",
       person: CAIRO,
       results: [],
