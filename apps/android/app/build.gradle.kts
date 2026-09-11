@@ -42,4 +42,5 @@ android {
 dependencies {
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20260814")
 }
