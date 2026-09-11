@@ -107,7 +107,11 @@ def generate(base, binaries, ip, sni, release, port=443, allow_local=False):
         'streamSettings': {'network': 'raw', 'security': 'reality', 'realitySettings': {
             'show': False, 'target': f'{sni}:443', 'serverNames': [sni],
             'privateKey': state['private_key'], 'shortIds': [state['short_id']]}}}],
-        'outbounds': [{'tag': 'direct', 'protocol': 'freedom', 'settings': {'domainStrategy': 'UseIP'}},
+        'outbounds': [{'tag': 'direct', 'protocol': 'freedom',
+                      # Single-VPS deployment accepts only a public IPv4 address.
+                      # Constrain egress resolution to IPv4 too, so an IPv4-only
+                      # host cannot randomly select an unreachable AAAA result.
+                      'settings': {'domainStrategy': 'UseIPv4'}},
                       {'tag': 'block', 'protocol': 'blackhole'}],
         'routing': {'domainStrategy': 'IPOnDemand', 'rules': [
             {'type': 'field', 'ip': blocked, 'outboundTag': 'block'}]}}
