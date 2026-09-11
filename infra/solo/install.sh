@@ -129,7 +129,11 @@ probe_target() {
 if [[ -n $REALITY_SNI ]]; then
   probe_target "$REALITY_SNI" || { echo 'REALITY target не прошёл TLS 1.3/h2 проверку.' >&2; exit 1; }
 else
-  for target in www.microsoft.com www.cloudflare.com www.apple.com; do
+  # Xray-core 26.3.27 has a reproduced REALITY failure with www.microsoft.com
+  # when Microsoft's TLS Certificate record exceeds reality's 8192-byte limit
+  # (XTLS/Xray-core#6356). Direct openssl succeeds, so the generic TLS probe
+  # cannot detect this incompatibility. Prefer targets reproduced as working.
+  for target in www.cloudflare.com www.apple.com www.bing.com; do
     if probe_target "$target"; then REALITY_SNI=$target; break; fi
   done
   [[ -n $REALITY_SNI ]] || { echo 'Нет доступного TLS 1.3/h2 target. Укажите REALITY_SNI=подходящий.домен.' >&2; exit 1; }
