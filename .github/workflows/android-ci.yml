@@ -50,6 +50,9 @@ jobs:
         shell: bash
         run: bash apps/android/scripts/prepare-libxray.sh
 
+      - name: Run unit tests
+        run: gradle -p apps/android :app:testDebugUnitTest --stacktrace
+
       - name: Assemble debug APK
         run: gradle -p apps/android :app:assembleDebug --stacktrace
 
