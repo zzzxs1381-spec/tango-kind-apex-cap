@@ -6,3 +6,5 @@ __pycache__/
 .github_repo
 .env
 .env.*
+.android-build*/
+apps/android/dist/

@@ -12,6 +12,7 @@ import secrets
 import subprocess
 from urllib.parse import urlencode
 import uuid
+from android_profile import build_profile, solo_catalog
 
 PRIVATE = ['0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
            '169.254.0.0/16', '172.16.0.0/12', '192.168.0.0/16',
@@ -124,6 +125,7 @@ def generate(base, binaries, ip, sni, release, port=443, allow_local=False):
     write(clients / 'xray-client.json', xray_client(state, ip, port, 10808))
     write(clients / 'hysteria-client.json', hy_client(state, ip, 'server.crt', port, 10809))
     write(clients / 'server.crt', cert.read_text())
+    write(clients / 'xfreedom-android.json', build_profile(solo_catalog(state, cert.read_text(), port)))
     links = []
     for fingerprint in ('chrome', 'firefox'):
         query = urlencode({'type': 'tcp', 'encryption': 'none', 'security': 'reality',

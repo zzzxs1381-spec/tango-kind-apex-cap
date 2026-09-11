@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "checked_at": "2026-09-11",
+  "application_id": "app.xfreedom.android",
+  "application_name": "XFreedom",
+  "version_name": "0.1.0",
+  "version_code": 1,
+  "client": {
+    "repository": "https://github.com/SagerNet/sing-box-for-android.git",
+    "commit": "5d5479d8bb60f7eb45e86402a8aa3a6131dd9ba3",
+    "upstream_version": "1.14.0",
+    "license": "GPL-3.0-or-later; preserve upstream naming notice"
+  },
+  "core": {
+    "repository": "https://github.com/SagerNet/sing-box.git",
+    "commit": "0b8995879f29a9b98ee027bc17b75e101445b238",
+    "upstream_version": "1.14.0",
+    "license": "GPL-3.0-or-later; preserve upstream notices"
+  },
+  "toolchain": {
+    "go": "1.26.7",
+    "java": "17",
+    "android_platform": "platforms;android-37.1",
+    "android_build_tools": "build-tools;37.0.0",
+    "ndk": "28.0.13004108"
+  },
+  "linux_validator": {
+    "url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.0/sing-box-1.14.0-linux-amd64.tar.gz",
+    "sha256": "2375de6999f4f56ab46b4fc5ddf26a6aba1d3e61a0f4e7ddec2f4690457d5f63"
+  }
+}
