@@ -46,6 +46,10 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
+      - name: Prepare pinned libXray
+        shell: bash
+        run: bash apps/android/scripts/prepare-libxray.sh
+
       - name: Assemble debug APK
         run: gradle -p apps/android :app:assembleDebug --stacktrace
 
