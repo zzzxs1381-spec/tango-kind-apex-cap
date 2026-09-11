@@ -141,7 +141,13 @@ try {
     };
   }
 
-  const brandWarnings = computeBrandWarnings({ hasCanvas: viewports.desktop.hasCanvas });
+  // The screenshots intentionally live under /workspace, but CI checks out the
+  // repository elsewhere. Brand assets must be evaluated in the actual source
+  // tree, not in the screenshot output directory.
+  const brandWarnings = computeBrandWarnings({
+    hasCanvas: viewports.desktop.hasCanvas,
+    workspaceRoot: process.cwd(),
+  });
   // Only a dev server answers /__app-env, so smoking the built output reads as
   // indeterminate — report a divergence, never the absence of an observation.
   const authWarnings = authInvariantWarnings(
