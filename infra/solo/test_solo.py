@@ -39,8 +39,10 @@ class Rendering(unittest.TestCase):
             self.assertEqual((base / 'clients').stat().st_mode & 0o777, 0o700)
             config = json.loads((base / 'xray.json').read_text())
             self.assertTrue(config['inbounds'][0]['settings']['clients'])
-            # The solo installer accepts a public IPv4 address only, so its
-            # direct Xray egress must not randomly choose an unusable AAAA path.
+            # The solo installer accepts a public IPv4 address only. Both the
+            # Xray internal resolver (used by IPOnDemand) and Freedom egress
+            # therefore stay on A records / IPv4.
+            self.assertEqual(config['dns']['queryStrategy'], 'UseIPv4')
             self.assertEqual(config['outbounds'][0]['settings']['domainStrategy'], 'UseIPv4')
             client = json.loads((base / 'clients/hysteria-client.json').read_text())
             self.assertFalse(client['tls']['insecure'])
