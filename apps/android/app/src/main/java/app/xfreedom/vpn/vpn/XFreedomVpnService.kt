@@ -8,10 +8,18 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import app.xfreedom.vpn.MainActivity
-import app.xfreedom.vpn.engine.EngineRegistry
+import app.xfreedom.vpn.diagnostics.PostConnectVerifier
+import app.xfreedom.vpn.engine.TunnelEngine
+import app.xfreedom.vpn.engine.xray.XrayEngine
+import app.xfreedom.vpn.profile.ProfileStore
 
 class XFreedomVpnService : VpnService() {
+    @Volatile
+    private var starting = false
+    private var vpnInterface: ParcelFileDescriptor? = null
+    private var activeEngine: TunnelEngine? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -19,6 +27,11 @@ class XFreedomVpnService : VpnService() {
             ACTION_START, null -> startVpnService()
         }
         return START_STICKY
+    }
+
+    override fun onDestroy() {
+        stopEngineAndTun()
+        super.onDestroy()
     }
 
     override fun onRevoke() {
@@ -29,27 +42,66 @@ class XFreedomVpnService : VpnService() {
 
     private fun startVpnService() {
         ensureForeground()
+        if (starting || vpnInterface != null) return
+        starting = true
+        broadcastState(STATE_STARTING, "Проверяем профиль и запускаем защищённый туннель…")
 
-        val engine = EngineRegistry.firstReady(this)
-        if (engine == null) {
-            // Deliberately do not create a TUN interface until a verified packet
-            // forwarding engine is available. Creating one now would black-hole
-            // user traffic while falsely appearing to be connected.
+        Thread({ startWorker() }, "xfreedom-vpn-start").start()
+    }
+
+    private fun startWorker() {
+        try {
+            val profile = ProfileStore.read(this).getOrThrow()
+            val engine = XrayEngine { fd -> protect(fd) }
+            check(engine.isReady(this)) { "libXray is unavailable in this build" }
+            engine.validate(this, profile).getOrThrow()
+
+            val tun = Builder()
+                .setSession("XFreedom")
+                .setMtu(TUN_MTU)
+                .addAddress("172.19.0.1", 30)
+                .addRoute("0.0.0.0", 0)
+                .addDnsServer("1.1.1.1")
+                .addAddress("fd7a:115c:a1e0::1", 126)
+                .addRoute("::", 0)
+                .addDnsServer("2606:4700:4700::1111")
+                .establish()
+                ?: error("Android did not create the VPN interface")
+
+            vpnInterface = tun
+            activeEngine = engine
+            engine.start(this, tun.fd, profile).getOrThrow()
+
+            val verified = PostConnectVerifier.verify().getOrThrow()
             broadcastState(
-                STATE_ENGINE_REQUIRED,
-                "VPN permission granted. Native transport engine is not packaged yet.",
+                STATE_CONNECTED,
+                "Туннель проверен через ${verified.endpoint} · HTTP ${verified.statusCode}",
             )
-            return
+        } catch (error: Throwable) {
+            stopEngineAndTun()
+            broadcastState(
+                STATE_ERROR,
+                error.message ?: error.javaClass.simpleName,
+            )
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        } finally {
+            starting = false
         }
+    }
 
-        broadcastState(
-            STATE_ENGINE_REQUIRED,
-            "Engine ${engine.displayName} is registered; transport configuration is required.",
-        )
+    @Synchronized
+    private fun stopEngineAndTun() {
+        runCatching { activeEngine?.stop(this)?.getOrThrow() }
+        activeEngine = null
+        runCatching { vpnInterface?.close() }
+        vpnInterface = null
     }
 
     private fun stopVpnService() {
-        broadcastState(STATE_DISCONNECTED, "Disconnected")
+        starting = false
+        stopEngineAndTun()
+        broadcastState(STATE_DISCONNECTED, "Отключено")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -80,9 +132,9 @@ class XFreedomVpnService : VpnService() {
         )
 
         val notification = Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("XFreedom")
-            .setContentText("VPN service is ready; waiting for a verified transport engine")
+            .setContentText("VPN запущен")
             .setContentIntent(openApp)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(null, "Отключить", stopVpn).build())
@@ -117,10 +169,13 @@ class XFreedomVpnService : VpnService() {
         const val EXTRA_STATE = "state"
         const val EXTRA_MESSAGE = "message"
 
+        const val STATE_STARTING = "STARTING"
         const val STATE_ENGINE_REQUIRED = "ENGINE_REQUIRED"
         const val STATE_CONNECTED = "CONNECTED"
         const val STATE_DISCONNECTED = "DISCONNECTED"
+        const val STATE_ERROR = "ERROR"
 
+        private const val TUN_MTU = 1280
         private const val CHANNEL_ID = "xfreedom_vpn"
         private const val NOTIFICATION_ID = 101
     }
