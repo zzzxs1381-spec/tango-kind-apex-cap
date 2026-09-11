@@ -38,3 +38,7 @@ android {
         buildConfig = true
     }
 }
+
+dependencies {
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
+}
