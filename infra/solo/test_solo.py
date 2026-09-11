@@ -22,6 +22,21 @@ class Rendering(unittest.TestCase):
             with self.assertRaises(ValueError):
                 valid_sni(sni)
 
+    def test_auto_reality_targets_exclude_known_bad_microsoft_target(self):
+        installer = Path(__file__).with_name('install.sh').read_text()
+        candidate_lines = [
+            line.strip() for line in installer.splitlines()
+            if line.strip().startswith('for target in ')
+        ]
+        self.assertEqual(len(candidate_lines), 1)
+        candidates = candidate_lines[0]
+        # XTLS/Xray-core#6356 reproduces a REALITY reset on Xray 26.3.27
+        # with www.microsoft.com even though direct TLS to that host succeeds.
+        self.assertNotIn('www.microsoft.com', candidates)
+        self.assertIn('www.cloudflare.com', candidates)
+        self.assertIn('www.apple.com', candidates)
+        self.assertIn('www.bing.com', candidates)
+
     def test_rerun_preserves_all_credentials_and_certificates(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
