@@ -1,12 +1,13 @@
 package app.xfreedom.vpn
 
-import android.app.Activity
 import android.Manifest
+import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -15,7 +16,9 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import app.xfreedom.vpn.profile.ProfileStore
 import app.xfreedom.vpn.vpn.XFreedomVpnService
+import java.io.ByteArrayOutputStream
 
 class MainActivity : Activity() {
     private lateinit var statusView: TextView
@@ -43,7 +46,11 @@ class MainActivity : Activity() {
 
         renderState(
             XFreedomVpnService.STATE_DISCONNECTED,
-            "Готов к системному разрешению VPN. Транспортное ядро подключается отдельным модулем.",
+            if (ProfileStore.hasProfile(this)) {
+                "Профиль Xray загружен. Можно подключаться."
+            } else {
+                "Сначала импортируйте клиентский xray-client.json из XFreedom."
+            },
         )
     }
 
@@ -63,17 +70,47 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
-    @Deprecated("Deprecated in Android API; retained to keep this zero-dependency shell minimal.")
+    @Deprecated("Deprecated Android result API retained for a dependency-free bootstrap UI.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_VPN && resultCode == RESULT_OK) {
-            startVpnService()
-        } else if (requestCode == REQUEST_VPN) {
-            renderState(XFreedomVpnService.STATE_DISCONNECTED, "Разрешение VPN не выдано.")
+        when (requestCode) {
+            REQUEST_VPN -> {
+                if (resultCode == RESULT_OK) {
+                    startVpnService()
+                } else {
+                    renderState(XFreedomVpnService.STATE_DISCONNECTED, "Разрешение VPN не выдано.")
+                }
+            }
+
+            REQUEST_PROFILE -> {
+                if (resultCode != RESULT_OK) return
+                val uri = data?.data ?: return
+                val result = runCatching { readLimitedUtf8(uri, MAX_PROFILE_BYTES) }
+                    .flatMap { ProfileStore.importClientJson(this, it) }
+                result.onSuccess {
+                    renderState(
+                        XFreedomVpnService.STATE_DISCONNECTED,
+                        "Клиентский профиль проверен и сохранён в приватном хранилище приложения.",
+                    )
+                }.onFailure {
+                    renderState(
+                        XFreedomVpnService.STATE_ERROR,
+                        "Профиль отклонён: ${it.message ?: it.javaClass.simpleName}",
+                    )
+                }
+            }
         }
     }
 
     private fun requestVpnPermissionAndStart() {
+        if (!ProfileStore.hasProfile(this)) {
+            renderState(
+                XFreedomVpnService.STATE_ERROR,
+                "Нет клиентского профиля. Нажмите «Импортировать Xray JSON».",
+            )
+            return
+        }
+
         val prepareIntent = VpnService.prepare(this)
         if (prepareIntent != null) {
             @Suppress("DEPRECATION")
@@ -83,11 +120,22 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun chooseProfile() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/json")
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, REQUEST_PROFILE)
+    }
+
     private fun startVpnService() {
         val intent = Intent(this, XFreedomVpnService::class.java)
             .setAction(XFreedomVpnService.ACTION_START)
         startForegroundService(intent)
-        renderState("STARTING", "Системное разрешение получено. Проверяем доступные транспортные ядра…")
+        renderState(
+            XFreedomVpnService.STATE_STARTING,
+            "Системное разрешение получено. Проверяем Xray и маршрут…",
+        )
     }
 
     private fun stopVpnService() {
@@ -101,13 +149,31 @@ class MainActivity : Activity() {
         statusView.text = when (state) {
             XFreedomVpnService.STATE_CONNECTED -> "ЗАЩИЩЕНО"
             XFreedomVpnService.STATE_ENGINE_REQUIRED -> "ТРЕБУЕТСЯ ЯДРО"
-            "STARTING" -> "ПОДКЛЮЧЕНИЕ"
+            XFreedomVpnService.STATE_STARTING -> "ПОДКЛЮЧЕНИЕ"
+            XFreedomVpnService.STATE_ERROR -> "ОШИБКА"
             else -> "ВЫКЛ"
         }
         detailsView.text = message
         connectButton.text = if (state == XFreedomVpnService.STATE_CONNECTED) "ОТКЛЮЧИТЬСЯ" else "ПОДКЛЮЧИТЬСЯ"
         connectButton.setOnClickListener {
             if (state == XFreedomVpnService.STATE_CONNECTED) stopVpnService() else requestVpnPermissionAndStart()
+        }
+    }
+
+    private fun readLimitedUtf8(uri: Uri, limit: Int): String {
+        val input = contentResolver.openInputStream(uri) ?: error("Не удалось открыть файл")
+        input.use { stream ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8 * 1024)
+            var total = 0
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= limit) { "Профиль больше ${limit / 1024} KiB" }
+                output.write(buffer, 0, count)
+            }
+            return output.toString(Charsets.UTF_8.name())
         }
     }
 
@@ -164,8 +230,17 @@ class MainActivity : Activity() {
         }
         root.addView(connectButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
 
+        root.addView(Button(this).apply {
+            text = "Импортировать Xray JSON"
+            textSize = 14f
+            isAllCaps = false
+            setOnClickListener { chooseProfile() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply {
+            topMargin = dp(12)
+        })
+
         root.addView(TextView(this).apply {
-            text = "AUTO · диагностика → выбор узла → выбор транспорта → проверка"
+            text = "AUTO · профиль → TUN → Xray → проверка выхода"
             textSize = 12f
             setTextColor(Color.rgb(105, 120, 145))
             gravity = Gravity.CENTER
@@ -178,5 +253,7 @@ class MainActivity : Activity() {
     companion object {
         private const val REQUEST_VPN = 1001
         private const val REQUEST_NOTIFICATIONS = 1002
+        private const val REQUEST_PROFILE = 1003
+        private const val MAX_PROFILE_BYTES = 2 * 1024 * 1024
     }
 }
