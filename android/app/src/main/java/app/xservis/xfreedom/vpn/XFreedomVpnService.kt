@@ -25,6 +25,10 @@ class XFreedomVpnService : VpnService() {
                 val config = intent.getStringExtra(EXTRA_XRAY_CONFIG).orEmpty()
                 startXray(config)
             }
+            ACTION_START -> {
+                startForegroundNow("XFreedom VPN")
+                failAndStop("Профиль транспорта не выбран")
+            }
             else -> {
                 publishState(false, "Неизвестная команда VPN")
                 stopSelf()
@@ -147,6 +151,7 @@ class XFreedomVpnService : VpnService() {
     }
 
     companion object {
+        const val ACTION_START = "app.xservis.xfreedom.action.START_VPN"
         const val ACTION_START_XRAY = "app.xservis.xfreedom.action.START_XRAY"
         const val ACTION_STOP = "app.xservis.xfreedom.action.STOP_VPN"
         const val ACTION_STATUS = "app.xservis.xfreedom.action.VPN_STATUS"
