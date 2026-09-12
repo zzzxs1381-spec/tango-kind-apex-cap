@@ -73,10 +73,15 @@ export async function recordVerifiedPaymentEvent(input: {
   const order = rows[0];
   if (!order) throw new Error("Unknown payment order");
 
-  if (!sameAmount(order.amount, input.event.amount)) {
+  // Never grant service unless the provider confirms the exact server-side price.
+  // Non-paid terminal/intermediate events can legitimately omit amount/currency.
+  if (input.event.paid && !sameAmount(order.amount, input.event.amount)) {
     throw new Error("Payment amount mismatch");
   }
-  if (input.event.currency && order.currency.toUpperCase() !== input.event.currency.toUpperCase()) {
+  if (
+    input.event.paid &&
+    (!input.event.currency || order.currency.toUpperCase() !== input.event.currency.toUpperCase())
+  ) {
     throw new Error("Payment currency mismatch");
   }
 
