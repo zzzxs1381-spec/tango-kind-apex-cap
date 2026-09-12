@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS payment_orders (
   id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL CHECK (provider IN ('freekassa', 'cryptomus')),
+  provider TEXT NOT NULL CHECK (provider IN ('freekassa', 'cryptomus', 'cispay')),
   plan_id TEXT NOT NULL,
   amount NUMERIC(18,8) NOT NULL CHECK (amount > 0),
   currency TEXT NOT NULL,
@@ -18,7 +18,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS payment_orders_provider_payment_uidx
 
 CREATE TABLE IF NOT EXISTS payment_events (
   id BIGSERIAL PRIMARY KEY,
-  provider TEXT NOT NULL CHECK (provider IN ('freekassa', 'cryptomus')),
+  provider TEXT NOT NULL CHECK (provider IN ('freekassa', 'cryptomus', 'cispay')),
   event_key TEXT NOT NULL,
   order_id TEXT NOT NULL REFERENCES payment_orders(id) ON DELETE CASCADE,
   status TEXT NOT NULL,
