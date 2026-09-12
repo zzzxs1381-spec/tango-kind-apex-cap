@@ -12,6 +12,21 @@ val libXrayVersion = "v26.9.9"
 val libXrayZipSha256 = "4998a8b56e4a78a164b5359d5690036f83da3b575465cea57ddf29c0149c345f"
 val libXrayAar = layout.projectDirectory.file("libs/libXray.aar")
 
+val releaseStorePath = providers.environmentVariable("XFREEDOM_ANDROID_KEYSTORE_PATH").orNull
+val releaseStorePassword = providers.environmentVariable("XFREEDOM_ANDROID_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("XFREEDOM_ANDROID_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("XFREEDOM_ANDROID_KEY_PASSWORD").orNull
+val releaseSigningValues = listOf(releaseStorePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+val hasAnyReleaseSigningValue = releaseSigningValues.any { !it.isNullOrBlank() }
+val hasCompleteReleaseSigning = releaseSigningValues.all { !it.isNullOrBlank() }
+check(!hasAnyReleaseSigningValue || hasCompleteReleaseSigning) {
+    "Android release signing is partially configured; provide all XFREEDOM_ANDROID_* signing variables or none."
+}
+
+val releaseVersionCode = providers.environmentVariable("XFREEDOM_ANDROID_VERSION_CODE").orNull?.toIntOrNull() ?: 2
+val releaseVersionName = providers.environmentVariable("XFREEDOM_ANDROID_VERSION_NAME").orNull ?: "0.2.0-alpha"
+check(releaseVersionCode in 1..2_100_000_000) { "Invalid Android versionCode: $releaseVersionCode" }
+
 val fetchLibXray by tasks.registering {
     outputs.file(libXrayAar)
     doLast {
@@ -74,10 +89,21 @@ android {
         applicationId = "app.xservis.xfreedom"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0-alpha"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (hasCompleteReleaseSigning) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseStorePath))
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -87,6 +113,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
