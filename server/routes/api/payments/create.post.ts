@@ -33,6 +33,10 @@ export default defineHandler(async (event) => {
   if (!paymentPlansConfigured()) return jsonError("Payment plans are not configured", 503);
 
   const input = parsed.data;
+  if (input.provider === "freekassa" && !input.email) {
+    return jsonError("Email is required for FreeKassa");
+  }
+
   const plan = getPaymentPlan(input.planId);
   if (!plan) return jsonError("Unknown payment plan");
 
@@ -51,13 +55,11 @@ export default defineHandler(async (event) => {
   let providerOrderCreated = false;
   try {
     if (input.provider === "freekassa") {
-      if (!input.email) return jsonError("Email is required for FreeKassa");
-
       const ip = getRequestIP(event, { xForwardedFor: true }) ?? "127.0.0.1";
       const checkout = await createFreeKassaPayment({
         orderId,
         amount,
-        email: input.email,
+        email: input.email!,
         ip,
         method: input.method ?? "sbp",
         recurrent: input.recurrent,
