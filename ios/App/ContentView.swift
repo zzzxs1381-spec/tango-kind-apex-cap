@@ -69,7 +69,7 @@ struct ContentView: View {
                 .padding(8)
                 .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
                 .font(.system(.footnote, design: .monospaced))
-                .onChange(of: shareURL) { _, _ in validateProfile() }
+                .onChange(of: shareURL) { _ in validateProfile() }
             Text(validationMessage)
                 .font(.footnote)
                 .foregroundStyle(validProfile == nil ? .orange : .green)
