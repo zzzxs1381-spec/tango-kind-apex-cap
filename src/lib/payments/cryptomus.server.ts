@@ -33,14 +33,15 @@ export async function createCryptomusPayment(input: {
   const merchant = requireEnv("XF_CRYPTOMUS_MERCHANT_ID");
   const apiKey = requireEnv("XF_CRYPTOMUS_PAYMENT_API_KEY");
   const baseUrl = input.callbackBaseUrl.replace(/\/$/, "");
+  const returnUrl = (process.env.XF_PAYMENT_RETURN_URL?.trim() || baseUrl).replace(/\/$/, "");
 
   const payload = {
     amount: input.amount.toFixed(2),
     currency: input.currency.toUpperCase(),
     order_id: input.orderId,
     url_callback: `${baseUrl}/api/payments/cryptomus-webhook`,
-    url_return: `${baseUrl}/app/`,
-    url_success: `${baseUrl}/app/`,
+    url_return: returnUrl,
+    url_success: returnUrl,
     is_payment_multiple: false,
   };
   const json = JSON.stringify(payload);
@@ -83,7 +84,8 @@ export function verifyCryptomusWebhook(data: Record<string, unknown>): VerifiedP
   const unsigned = { ...data };
   delete unsigned.sign;
 
-  // Cryptomus signs PHP json_encode output; PHP escapes forward slashes by default.
+  // Cryptomus webhook signing mirrors PHP json_encode with JSON_UNESCAPED_UNICODE.
+  // JSON.stringify already leaves Unicode unescaped; PHP escapes forward slashes.
   const canonicalJson = JSON.stringify(unsigned).replace(/\//g, "\\/");
   const expected = cryptomusSign(canonicalJson, apiKey);
   if (!safeEqual(expected, incomingSign)) throw new Error("Invalid Cryptomus webhook signature");
@@ -97,8 +99,10 @@ export function verifyCryptomusWebhook(data: Record<string, unknown>): VerifiedP
     orderId,
     status,
     paid: status === "paid" || status === "paid_over",
-    amount: typeof data.payment_amount === "string" ? data.payment_amount : undefined,
-    currency: typeof data.payer_currency === "string" ? data.payer_currency : undefined,
+    // Validate against the invoice amount/currency, not payer_amount/payer_currency:
+    // the latter are the crypto actually used by the customer.
+    amount: typeof data.amount === "string" || typeof data.amount === "number" ? String(data.amount) : undefined,
+    currency: typeof data.currency === "string" ? data.currency : undefined,
     providerPaymentId: typeof data.uuid === "string" ? data.uuid : undefined,
     txid: typeof data.txid === "string" ? data.txid : undefined,
   };
