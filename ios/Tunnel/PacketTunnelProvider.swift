@@ -3,7 +3,7 @@ import NetworkExtension
 import SwiftyXrayKit
 
 final class PacketTunnelProvider: NEPacketTunnelProvider {
-    private var bridge: XrayBridge?
+    private var tunnel: XRayTunnel?
 
     override func startTunnel(
         options: [String: NSObject]?,
@@ -30,26 +30,27 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 return
             }
 
-            do {
-                let runtimeDir = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("xfreedom-xray", isDirectory: true)
-                try FileManager.default.createDirectory(
-                    at: runtimeDir,
-                    withIntermediateDirectories: true
-                )
-                let finalConfig = runtimeDir.appendingPathComponent("resolved-xray.json")
+            Task {
+                do {
+                    let runtimeDir = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("xfreedom-xray", isDirectory: true)
+                    try FileManager.default.createDirectory(
+                        at: runtimeDir,
+                        withIntermediateDirectories: true
+                    )
+                    let finalConfig = runtimeDir.appendingPathComponent("resolved-xray.json")
 
-                let bridge = XrayBridge(packetFlow: self.packetFlow)
-                try bridge.start(
-                    config: .url(shareURL),
-                    dataDir: runtimeDir,
-                    finalConfigPath: finalConfig,
-                    preset: .mobile
-                )
-                self.bridge = bridge
-                completionHandler(nil)
-            } catch {
-                completionHandler(error)
+                    let tunnel = XRayTunnel(packetFlow: self.packetFlow)
+                    try await tunnel.run(
+                        dataDir: runtimeDir,
+                        config: .url(shareURL),
+                        finalConfigPath: finalConfig
+                    )
+                    self.tunnel = tunnel
+                    completionHandler(nil)
+                } catch {
+                    completionHandler(error)
+                }
             }
         }
     }
@@ -58,9 +59,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         with reason: NEProviderStopReason,
         completionHandler: @escaping () -> Void
     ) {
-        bridge?.stop()
-        bridge = nil
-        completionHandler()
+        let activeTunnel = tunnel
+        tunnel = nil
+        Task {
+            if let activeTunnel {
+                await activeTunnel.stop()
+            }
+            completionHandler()
+        }
     }
 
     override func sleep(completionHandler: @escaping () -> Void) {
