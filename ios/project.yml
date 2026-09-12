@@ -32,6 +32,11 @@ targets:
         INFOPLIST_FILE: Config/App-Info.plist
         CODE_SIGN_ENTITLEMENTS: Config/App.entitlements
         PRODUCT_NAME: XFreedom
+      configs:
+        Release:
+          DEVELOPMENT_TEAM: $(XF_APPLE_TEAM_ID)
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: $(XF_APP_PROFILE_NAME)
     dependencies:
       - target: XFreedomTunnel
         embed: true
@@ -48,5 +53,10 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Config/Tunnel.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
         PRODUCT_NAME: XFreedomTunnel
+      configs:
+        Release:
+          DEVELOPMENT_TEAM: $(XF_APPLE_TEAM_ID)
+          CODE_SIGN_STYLE: Manual
+          PROVISIONING_PROFILE_SPECIFIER: $(XF_TUNNEL_PROFILE_NAME)
     dependencies:
       - package: SwiftyXrayKit
