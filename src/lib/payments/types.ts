@@ -1,14 +1,14 @@
-export type PaymentProvider = "freekassa" | "cryptomus";
+export type PaymentProvider = "freekassa" | "cryptomus" | "cispay";
 
 export type FreeKassaMethod = "card" | "visa" | "mastercard" | "mir" | "sbp";
+export type CisPayMethod = "card" | "sbp";
 
 export interface CreatePaymentRequest {
   provider: PaymentProvider;
-  orderId: string;
-  amount: number;
-  currency?: string;
+  planId: string;
   email?: string;
-  method?: FreeKassaMethod;
+  method?: FreeKassaMethod | CisPayMethod;
+  customerId?: string;
   recurrent?: boolean;
   recurrentPeriod?: "day" | "week" | "month" | "year";
 }
