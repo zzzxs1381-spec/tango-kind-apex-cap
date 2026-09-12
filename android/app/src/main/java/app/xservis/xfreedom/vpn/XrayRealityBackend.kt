@@ -49,7 +49,10 @@ class XrayRealityBackend(private val sourceConfig: String) : TunnelBackend {
 
         val runtimeConfig = buildRuntimeConfig(profile, pfd.fd)
         val controller = object : DialerController {
-            override fun protectFd(fd: Int): Boolean = service.protect(fd)
+            override fun protectFd(fd: Long): Boolean {
+                if (fd < Int.MIN_VALUE.toLong() || fd > Int.MAX_VALUE.toLong()) return false
+                return service.protect(fd.toInt())
+            }
         }
         LibXray.registerDialerController(controller)
         LibXray.registerListenerController(controller)
