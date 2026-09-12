@@ -61,7 +61,7 @@ class DecisionEngineTest {
     }
 
     @Test
-    fun `unknown udp and quic asks for more evidence`() {
+    fun `unknown udp and quic asks ideal engine for more evidence`() {
         val decision = DecisionEngine.decide(
             snapshot(
                 control = ControlProbe(
@@ -72,6 +72,54 @@ class DecisionEngineTest {
                     quic = ProbeState.UNKNOWN,
                 ),
             ),
+        )
+        assertNull(decision.primary)
+        assertEquals(DecisionAction.COLLECT_MORE_EVIDENCE, decision.action)
+    }
+
+    @Test
+    fun `capability aware engine never selects missing hysteria backend`() {
+        val decision = DecisionEngine.decide(
+            snapshot(),
+            availableTransports = setOf(TransportName.VLESS_REALITY, TransportName.WIREGUARD),
+        )
+        assertEquals(TransportName.VLESS_REALITY, decision.primary)
+        assertEquals(listOf(TransportName.WIREGUARD), decision.fallbacks)
+        assertEquals(DecisionAction.CONNECT, decision.action)
+    }
+
+    @Test
+    fun `unknown udp can use configured reality because tcp tls are measured`() {
+        val decision = DecisionEngine.decide(
+            snapshot(
+                control = ControlProbe(
+                    dns = ProbeState.PASS,
+                    tcp443 = ProbeState.PASS,
+                    tls = ProbeState.PASS,
+                    udp443 = ProbeState.UNKNOWN,
+                    quic = ProbeState.UNKNOWN,
+                ),
+            ),
+            availableTransports = setOf(TransportName.VLESS_REALITY),
+        )
+        assertEquals(TransportName.VLESS_REALITY, decision.primary)
+        assertEquals(DecisionAction.CONNECT, decision.action)
+        assertTrue(decision.reason.contains("post-connect"))
+    }
+
+    @Test
+    fun `client refuses recommendation when no recommended backend exists`() {
+        val decision = DecisionEngine.decide(
+            snapshot(
+                control = ControlProbe(
+                    dns = ProbeState.PASS,
+                    tcp443 = ProbeState.PASS,
+                    tls = ProbeState.PASS,
+                    udp443 = ProbeState.FAIL,
+                    quic = ProbeState.FAIL,
+                ),
+            ),
+            availableTransports = setOf(TransportName.WIREGUARD),
         )
         assertNull(decision.primary)
         assertEquals(DecisionAction.COLLECT_MORE_EVIDENCE, decision.action)
