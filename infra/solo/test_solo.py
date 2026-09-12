@@ -4,6 +4,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -11,6 +12,19 @@ from unittest.mock import patch
 import uuid
 from render import generate, valid_ip, valid_sni, xray_client, hy_client
 from probe import test_transport
+
+
+def free_tcp_port():
+    """Reserve an unused loopback port for one live client probe.
+
+    The installed stack also runs a scheduled health probe that uses the default
+    18081/18082 SOCKS ports. Live authentication tests must never reuse those
+    ports, otherwise a concurrent valid health probe can make a deliberately
+    invalid client appear authenticated.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(('127.0.0.1', 0))
+        return listener.getsockname()[1]
 
 
 class Rendering(unittest.TestCase):
@@ -74,29 +88,37 @@ class LiveAuthentication(unittest.TestCase):
     def test_wrong_xray_identity_is_rejected(self):
         state = copy.deepcopy(self.state)
         state['uuid'] = str(uuid.uuid4())
+        socks_port = free_tcp_port()
         with tempfile.TemporaryDirectory() as td:
             result = test_transport(self.bin / 'xray', 'xray',
-                xray_client(state, '127.0.0.1'), 18081, td, check_udp=False)
+                xray_client(state, '127.0.0.1', socks_port=socks_port), socks_port, td, check_udp=False)
         self.assertFalse(result['tcp'])
 
     def test_wrong_hysteria_certificate_is_rejected(self):
+        socks_port = free_tcp_port()
         with tempfile.TemporaryDirectory() as td:
             fake = Path(td) / 'other.crt'
             subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2',
                 '-keyout', str(Path(td) / 'other.key'), '-out', str(fake), '-subj', '/CN=other.example'],
                 check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             result = test_transport(self.bin / 'hysteria', 'hysteria',
-                hy_client(self.state, '127.0.0.1', fake), 18082, td, check_udp=False)
+                hy_client(self.state, '127.0.0.1', fake, socks_port=socks_port), socks_port, td, check_udp=False)
         self.assertFalse(result['tcp'])
 
     def test_vpn_cannot_reach_private_admin(self):
         with tempfile.TemporaryDirectory() as td:
-            for kind, config, port in (
-                ('xray', xray_client(self.state, '127.0.0.1'), 18081),
-                ('hysteria', hy_client(self.state, '127.0.0.1', self.base / 'server.crt'), 18082)):
-                result = test_transport(self.bin / kind, kind, config, port, td,
-                    targets=['http://127.0.0.1:8080/api/health'], check_udp=False)
-                self.assertFalse(result['tcp'], kind)
+            xray_port = free_tcp_port()
+            result = test_transport(self.bin / 'xray', 'xray',
+                xray_client(self.state, '127.0.0.1', socks_port=xray_port), xray_port, td,
+                targets=['http://127.0.0.1:8080/api/health'], check_udp=False)
+            self.assertFalse(result['tcp'], 'xray')
+
+        with tempfile.TemporaryDirectory() as td:
+            hysteria_port = free_tcp_port()
+            result = test_transport(self.bin / 'hysteria', 'hysteria',
+                hy_client(self.state, '127.0.0.1', self.base / 'server.crt', socks_port=hysteria_port),
+                hysteria_port, td, targets=['http://127.0.0.1:8080/api/health'], check_udp=False)
+            self.assertFalse(result['tcp'], 'hysteria')
 
 
 if __name__ == '__main__':
