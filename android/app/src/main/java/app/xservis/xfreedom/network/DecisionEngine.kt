@@ -96,6 +96,10 @@ object DecisionEngine {
         return Classification(InterferenceKind.UNKNOWN, 0.20, evidence, limitations)
     }
 
+    /**
+     * Ideal transport order from fresh network evidence, independent of which
+     * native engines or profiles happen to be present on the client.
+     */
     fun decide(snapshot: NetworkSnapshot): TransportDecision {
         val classification = classify(snapshot)
 
@@ -145,6 +149,69 @@ object DecisionEngine {
             confidence = 0.25,
             reason = "Недостаточно системных измерений для честного выбора транспорта.",
             action = DecisionAction.COLLECT_MORE_EVIDENCE,
+        )
+    }
+
+    /**
+     * Client-facing decision. It never selects a transport that the APK cannot
+     * actually start or for which the user/server has not provided a profile.
+     */
+    fun decide(
+        snapshot: NetworkSnapshot,
+        availableTransports: Set<TransportName>,
+    ): TransportDecision {
+        val ideal = decide(snapshot)
+
+        if (ideal.action == DecisionAction.SWITCH_UPLINK) return ideal
+
+        if (ideal.action == DecisionAction.CONNECT && ideal.primary != null) {
+            val ordered = listOf(ideal.primary) + ideal.fallbacks
+            val selectedIndex = ordered.indexOfFirst { it in availableTransports }
+            if (selectedIndex >= 0) {
+                val selected = ordered[selectedIndex]
+                val availableFallbacks = ordered
+                    .drop(selectedIndex + 1)
+                    .filter { it in availableTransports }
+                    .distinct()
+                return ideal.copy(
+                    primary = selected,
+                    fallbacks = availableFallbacks,
+                    confidence = if (selectedIndex == 0) ideal.confidence else (ideal.confidence - 0.12).coerceAtLeast(0.45),
+                    reason = ideal.reason + " Клиент выбрал реально доступный backend: ${selected.name}.",
+                )
+            }
+
+            return TransportDecision(
+                primary = null,
+                fallbacks = emptyList(),
+                confidence = 0.40,
+                reason = "Сеть допускает туннель, но ни один рекомендованный backend не установлен или не настроен в клиенте.",
+                action = DecisionAction.COLLECT_MORE_EVIDENCE,
+            )
+        }
+
+        val c = snapshot.control
+        if (
+            c.tcp443 == ProbeState.PASS &&
+            c.tls == ProbeState.PASS &&
+            c.udp443 == ProbeState.UNKNOWN &&
+            c.quic == ProbeState.UNKNOWN &&
+            TransportName.VLESS_REALITY in availableTransports
+        ) {
+            val fallbacks = buildList {
+                if (TransportName.WIREGUARD in availableTransports) add(TransportName.WIREGUARD)
+            }
+            return TransportDecision(
+                primary = TransportName.VLESS_REALITY,
+                fallbacks = fallbacks,
+                confidence = 0.68,
+                reason = "UDP/QUIC ещё не измерены, но TCP/443 и TLS подтверждены; используем доступный REALITY как консервативный TCP fallback с обязательной post-connect проверкой.",
+                action = DecisionAction.CONNECT,
+            )
+        }
+
+        return ideal.copy(
+            reason = ideal.reason + " Доступные backend: ${availableTransports.ifEmpty { setOf() }.joinToString().ifBlank { "нет" }}.",
         )
     }
 }
