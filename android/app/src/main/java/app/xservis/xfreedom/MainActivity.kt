@@ -43,6 +43,7 @@ import app.xservis.xfreedom.network.NetworkSnapshot
 import app.xservis.xfreedom.network.SystemProbeEngine
 import app.xservis.xfreedom.network.TransportDecision
 import app.xservis.xfreedom.vpn.TunnelCoreRegistry
+import app.xservis.xfreedom.vpn.WireGuardBackend
 import app.xservis.xfreedom.vpn.XFreedomVpnService
 
 class MainActivity : ComponentActivity() {
@@ -65,12 +66,41 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun XFreedomScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val activity = context as? ComponentActivity
+    val wireGuard = remember { WireGuardBackend(context.applicationContext) }
+
     var snapshot by remember { mutableStateOf<NetworkSnapshot?>(null) }
     var decision by remember { mutableStateOf<TransportDecision?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf(readRuntimeMessage(context)) }
+    var wireGuardConfig by remember { mutableStateOf<String?>(null) }
+    var wireGuardConnected by remember { mutableStateOf(false) }
 
-    fun startVpnService() {
+    fun connectWireGuard() {
+        val config = wireGuardConfig ?: run {
+            status = "Сначала импортируйте WireGuard .conf"
+            return
+        }
+        busy = true
+        status = "Подключаю WireGuard…"
+        Thread {
+            val result = wireGuard.connect(config)
+            activity?.runOnUiThread {
+                busy = false
+                result
+                    .onSuccess {
+                        wireGuardConnected = true
+                        status = "WireGuard подключён · реальный Android GoBackend"
+                    }
+                    .onFailure { error ->
+                        wireGuardConnected = false
+                        status = "WireGuard: ${error.message ?: "ошибка подключения"}"
+                    }
+            }
+        }.start()
+    }
+
+    fun startFutureTunnelService() {
         val intent = Intent(context, XFreedomVpnService::class.java)
             .setAction(XFreedomVpnService.ACTION_START)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -81,7 +111,7 @@ private fun XFreedomScreen() {
         status = if (TunnelCoreRegistry.backend.ready) {
             "Запуск VPN…"
         } else {
-            "VPN-разрешение получено; native tunnel core ещё не подключён"
+            "VPN-разрешение получено; для этого транспорта native core ещё не подключён"
         }
     }
 
@@ -89,9 +119,27 @@ private fun XFreedomScreen() {
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            startVpnService()
+            if (wireGuardConfig != null) connectWireGuard() else startFutureTunnelService()
         } else {
             status = "Системное разрешение VPN не выдано"
+        }
+    }
+
+    val wireGuardImport = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val bytes = input.readBytes()
+                require(bytes.size <= 64 * 1024) { "WireGuard config больше 64 KiB" }
+                bytes.toString(Charsets.UTF_8)
+            } ?: error("Не удалось открыть WireGuard config")
+        }.onSuccess { text ->
+            wireGuardConfig = text
+            status = "WireGuard профиль импортирован в память · ключи не сохранены на диск"
+        }.onFailure { error ->
+            status = "Импорт WireGuard: ${error.message ?: "ошибка"}"
         }
     }
 
@@ -113,10 +161,7 @@ private fun XFreedomScreen() {
                 color = Color(0xFFA6B3C4),
             )
 
-            StatusCard(
-                title = "Состояние",
-                text = status,
-            )
+            StatusCard(title = "Состояние", text = status)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -131,7 +176,7 @@ private fun XFreedomScreen() {
                         Thread {
                             val measured = SystemProbeEngine(context.applicationContext).collect()
                             val selected = DecisionEngine.decide(measured)
-                            (context as? ComponentActivity)?.runOnUiThread {
+                            activity?.runOnUiThread {
                                 snapshot = measured
                                 decision = selected
                                 busy = false
@@ -145,17 +190,57 @@ private fun XFreedomScreen() {
 
                 Button(
                     modifier = Modifier.weight(1f),
+                    enabled = !busy,
                     onClick = {
-                        val prepareIntent = VpnService.prepare(context)
-                        if (prepareIntent != null) {
-                            vpnPermission.launch(prepareIntent)
+                        if (wireGuardConnected) {
+                            busy = true
+                            Thread {
+                                val result = wireGuard.disconnect()
+                                activity?.runOnUiThread {
+                                    busy = false
+                                    result
+                                        .onSuccess {
+                                            wireGuardConnected = false
+                                            status = "WireGuard отключён"
+                                        }
+                                        .onFailure { error ->
+                                            status = "Отключение WireGuard: ${error.message ?: "ошибка"}"
+                                        }
+                                }
+                            }.start()
                         } else {
-                            startVpnService()
+                            val prepareIntent = VpnService.prepare(context)
+                            if (prepareIntent != null) {
+                                vpnPermission.launch(prepareIntent)
+                            } else if (wireGuardConfig != null) {
+                                connectWireGuard()
+                            } else {
+                                startFutureTunnelService()
+                            }
                         }
                     },
                 ) {
-                    Text("Подключить")
+                    Text(if (wireGuardConnected) "Отключить" else "Подключить")
                 }
+            }
+
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !busy && !wireGuardConnected,
+                onClick = { wireGuardImport.launch(arrayOf("text/plain", "application/octet-stream", "*/*")) },
+            ) {
+                Text(if (wireGuardConfig == null) "Импорт WireGuard .conf" else "Заменить WireGuard профиль")
+            }
+
+            wireGuardConfig?.let {
+                StatusCard(
+                    title = "WireGuard",
+                    text = if (wireGuardConnected) {
+                        "GoBackend: UP · профиль хранится только в памяти этой сессии"
+                    } else {
+                        "Профиль загружен · готов к системному VPN-разрешению и подключению"
+                    },
+                )
             }
 
             decision?.let { selected ->
@@ -191,7 +276,7 @@ private fun XFreedomScreen() {
 
             Spacer(Modifier.height(8.dp))
             Text(
-                "Важно: эта сборка не объявляет DPI/ТСПУ по одному таймауту. UDP/QUIC остаются UNKNOWN до подключения настоящего QUIC probe/core.",
+                "Важно: XFreedom не объявляет DPI/ТСПУ по одному таймауту. UDP/QUIC остаются UNKNOWN до настоящего QUIC probe. WireGuard подключается через официальный Android GoBackend.",
                 color = Color(0xFF7F8C9F),
                 fontSize = 12.sp,
             )
@@ -220,5 +305,5 @@ private fun readRuntimeMessage(context: Context): String =
     context.getSharedPreferences(XFreedomVpnService.PREFS, Context.MODE_PRIVATE)
         .getString(
             XFreedomVpnService.KEY_MESSAGE,
-            "Готово к диагностике. Native tunnel core ещё не подключён.",
+            "Готово к диагностике. Импортируйте WireGuard профиль для первого реального backend.",
         ) ?: "Готово к диагностике"
