@@ -10,6 +10,9 @@ import android.net.VpnService
 import android.os.Build
 
 class XFreedomVpnService : VpnService() {
+    @Volatile
+    private var activeBackend: TunnelBackend? = null
+
     override fun onCreate() {
         super.onCreate()
         ensureChannel()
@@ -17,33 +20,76 @@ class XFreedomVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_STOP -> {
-                TunnelCoreRegistry.backend.disconnect()
-                saveState(false, "Отключено")
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                return Service.START_NOT_STICKY
+            ACTION_STOP -> stopTunnel("Отключено")
+            ACTION_START_XRAY -> {
+                val config = intent.getStringExtra(EXTRA_XRAY_CONFIG).orEmpty()
+                startXray(config)
             }
-            ACTION_START, null -> startTunnel()
+            else -> {
+                publishState(false, "Неизвестная команда VPN")
+                stopSelf()
+            }
         }
-        return Service.START_STICKY
+        return Service.START_NOT_STICKY
     }
 
     override fun onRevoke() {
-        TunnelCoreRegistry.backend.disconnect()
-        saveState(false, "VPN-разрешение отозвано системой")
+        activeBackend?.disconnect()
+        activeBackend = null
+        publishState(false, "VPN-разрешение отозвано системой")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         super.onRevoke()
     }
 
     override fun onDestroy() {
-        TunnelCoreRegistry.backend.disconnect()
+        activeBackend?.disconnect()
+        activeBackend = null
         super.onDestroy()
     }
 
-    private fun startTunnel() {
-        val notification = buildNotification("Подготовка защищённого соединения")
+    private fun startXray(config: String) {
+        startForegroundNow("Запуск Xray / REALITY")
+        if (config.isBlank()) {
+            failAndStop("Xray профиль не передан")
+            return
+        }
+
+        Thread {
+            activeBackend?.disconnect()
+            val backend = XrayRealityBackend(config)
+            activeBackend = backend
+            backend.connect(this)
+                .onSuccess {
+                    publishState(true, "Подключено через Xray / REALITY")
+                    getSystemService(NotificationManager::class.java)
+                        .notify(NOTIFICATION_ID, buildNotification("XFreedom подключён · REALITY"))
+                }
+                .onFailure { error ->
+                    activeBackend = null
+                    failAndStop("REALITY: ${error.message ?: "ошибка подключения"}")
+                }
+        }.start()
+    }
+
+    private fun stopTunnel(message: String) {
+        Thread {
+            activeBackend?.disconnect()
+            activeBackend = null
+            publishState(false, message)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }.start()
+    }
+
+    private fun failAndStop(message: String) {
+        publishState(false, message)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun startForegroundNow(text: String) {
+        val notification = buildNotification(text)
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(
                 NOTIFICATION_ID,
@@ -53,26 +99,6 @@ class XFreedomVpnService : VpnService() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-
-        val backend = TunnelCoreRegistry.backend
-        if (!backend.ready) {
-            saveState(false, "Ядро туннеля ещё не подключено в этой сборке")
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return
-        }
-
-        backend.connect(this)
-            .onSuccess {
-                saveState(true, "Подключено через ${backend.id}")
-                getSystemService(NotificationManager::class.java)
-                    .notify(NOTIFICATION_ID, buildNotification("XFreedom подключён · ${backend.id}"))
-            }
-            .onFailure { error ->
-                saveState(false, "Ошибка туннеля: ${error.message ?: "неизвестная ошибка"}")
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
     }
 
     private fun ensureChannel() {
@@ -105,17 +131,29 @@ class XFreedomVpnService : VpnService() {
             .build()
     }
 
-    private fun saveState(connected: Boolean, message: String) {
+    private fun publishState(connected: Boolean, message: String) {
         getSharedPreferences(PREFS, MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_CONNECTED, connected)
             .putString(KEY_MESSAGE, message)
             .apply()
+
+        sendBroadcast(
+            Intent(ACTION_STATUS)
+                .setPackage(packageName)
+                .putExtra(EXTRA_CONNECTED, connected)
+                .putExtra(EXTRA_MESSAGE, message),
+        )
     }
 
     companion object {
-        const val ACTION_START = "app.xservis.xfreedom.action.START_VPN"
+        const val ACTION_START_XRAY = "app.xservis.xfreedom.action.START_XRAY"
         const val ACTION_STOP = "app.xservis.xfreedom.action.STOP_VPN"
+        const val ACTION_STATUS = "app.xservis.xfreedom.action.VPN_STATUS"
+        const val EXTRA_XRAY_CONFIG = "xray_config"
+        const val EXTRA_CONNECTED = "connected"
+        const val EXTRA_MESSAGE = "message"
+
         const val PREFS = "xfreedom_vpn_runtime"
         const val KEY_CONNECTED = "connected"
         const val KEY_MESSAGE = "message"
