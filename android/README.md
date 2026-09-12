@@ -33,12 +33,16 @@ The app deliberately refuses to establish an empty TUN until a concrete audited 
 
 ## Build
 
-Requirements:
+Production/debug APK lane currently uses the stable Android 16 SDK:
 
 - JDK 17
-- Android SDK platform 37
+- compileSdk 36
+- targetSdk 36
 - Android SDK Build Tools 36.0.0
+- Android Gradle Plugin 9.4.0
 - Gradle 9.6.0
+
+Android 17 / API 37 is still a preview SDK and is not required for the production APK lane.
 
 From the repository root:
 
