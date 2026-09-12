@@ -3,6 +3,7 @@
 Payment backend is provider-agnostic and currently supports:
 
 - **FreeKassa** for RUB checkout (cards / MIR / SBP, subject to methods enabled for the merchant account).
+- **cisPay** for Russian cards / SBP with merchant-side conversion and USDT payout options advertised by the provider.
 - **Cryptomus** for cryptocurrency checkout.
 
 The public API never accepts a price from the client. Prices are loaded server-side from `XF_PAYMENT_PLANS_JSON`; each order is persisted before the external checkout is created and all provider callbacks are stored idempotently.
@@ -43,7 +44,16 @@ Configure the shop notification URL as:
 
 `https://<public-origin>/api/payments/freekassa-webhook`
 
-Enable FreeKassa notification acknowledgement if desired; the endpoint returns `YES` after a verified and persisted callback.
+### cisPay
+
+- `XF_CISPAY_SHOP_ID`
+- `XF_CISPAY_API_KEY`
+
+Configure the store webhook URL as:
+
+`https://<public-origin>/api/payments/cispay-webhook`
+
+The webhook is accepted only after HMAC-SHA256 verification of the exact raw request body. Card and SBP checkouts use the same server-side RUB tariff; customer-supplied prices are never trusted. Treat cisPay as an optional processor until the merchant account has passed a small real card/SBP payment and USDT withdrawal test.
 
 ### Cryptomus
 
@@ -61,7 +71,7 @@ If automatic conversion to USDT is desired for received cryptocurrency, enable t
 
 `POST /api/payments/create`
 
-FreeKassa example:
+FreeKassa:
 
 ```json
 {
@@ -72,7 +82,18 @@ FreeKassa example:
 }
 ```
 
-Cryptomus example:
+cisPay:
+
+```json
+{
+  "provider": "cispay",
+  "planId": "month",
+  "method": "sbp",
+  "customerId": "customer-123"
+}
+```
+
+Cryptomus:
 
 ```json
 {
