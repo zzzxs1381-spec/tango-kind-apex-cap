@@ -8,12 +8,12 @@ on:
         required: false
         default: "0.2.0-field"
       upload_to_play:
-        description: "Upload the verified AAB to Google Play"
+        description: "Upload the verified AAB to Google Play pre-release"
         type: boolean
         required: false
         default: false
       play_track:
-        description: "Google Play track"
+        description: "Google Play pre-release track"
         type: choice
         required: false
         default: internal
@@ -21,10 +21,13 @@ on:
           - internal
           - alpha
           - beta
-          - production
 
 permissions:
   contents: read
+
+concurrency:
+  group: xfreedom-android-signed-release
+  cancel-in-progress: false
 
 jobs:
   signed-release:
@@ -107,7 +110,7 @@ jobs:
             -rfc > release-metadata/upload-certificate.pem
           keytool -printcert -file release-metadata/upload-certificate.pem > release-metadata/upload-certificate.txt
 
-      - name: Upload AAB to Google Play
+      - name: Upload AAB to Google Play pre-release track
         if: ${{ inputs.upload_to_play }}
         shell: bash
         run: |
