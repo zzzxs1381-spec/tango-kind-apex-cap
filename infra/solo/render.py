@@ -101,13 +101,22 @@ def generate(base, binaries, ip, sni, release, port=443, allow_local=False):
     key.chmod(0o640)
     cert.chmod(0o644)
     blocked = PRIVATE + ([] if allow_local else [ip + '/32'])
-    server = {'log': {'loglevel': 'warning'}, 'inbounds': [{
+    server = {'log': {'loglevel': 'warning'},
+        # The solo deployment is explicitly IPv4-only. IPOnDemand below can
+        # trigger Xray's own resolver before the Freedom outbound is reached,
+        # so constrain the internal resolver as well as the outbound.
+        'dns': {'servers': ['localhost'], 'queryStrategy': 'UseIPv4'},
+        'inbounds': [{
         'tag': 'reality-in', 'listen': '0.0.0.0', 'port': port, 'protocol': 'vless',
         'settings': {'clients': [{'id': state['uuid'], 'flow': 'xtls-rprx-vision'}], 'decryption': 'none'},
         'streamSettings': {'network': 'raw', 'security': 'reality', 'realitySettings': {
             'show': False, 'target': f'{sni}:443', 'serverNames': [sni],
             'privateKey': state['private_key'], 'shortIds': [state['short_id']]}}}],
-        'outbounds': [{'tag': 'direct', 'protocol': 'freedom', 'settings': {'domainStrategy': 'UseIP'}},
+        'outbounds': [{'tag': 'direct', 'protocol': 'freedom',
+                      # Single-VPS deployment accepts only a public IPv4 address.
+                      # Constrain egress resolution to IPv4 too, so an IPv4-only
+                      # host cannot randomly select an unreachable AAAA result.
+                      'settings': {'domainStrategy': 'UseIPv4'}},
                       {'tag': 'block', 'protocol': 'blackhole'}],
         'routing': {'domainStrategy': 'IPOnDemand', 'rules': [
             {'type': 'field', 'ip': blocked, 'outboundTag': 'block'}]}}

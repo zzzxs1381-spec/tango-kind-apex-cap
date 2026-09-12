@@ -98,14 +98,22 @@ try {
 
   const viewports = {};
   for (const vp of VIEWPORTS) {
-    const errors = { consoleErrors: [], pageErrors: [] };
+    const errors = { consoleErrors: [], pageErrors: [], failedResponses: [] };
     const page = await browser.newPage({
       viewport: { width: vp.width, height: vp.height },
     });
     page.on("console", (msg) => {
-      if (msg.type() === "error") errors.consoleErrors.push(msg.text());
+      if (msg.type() !== "error") return;
+      const location = msg.location();
+      const at = location?.url ? ` @ ${location.url}` : "";
+      errors.consoleErrors.push(`${msg.text()}${at}`);
     });
     page.on("pageerror", (err) => errors.pageErrors.push(String(err?.message || err)));
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        errors.failedResponses.push({ status: response.status(), url: response.url() });
+      }
+    });
     // `domcontentloaded`, not `networkidle`: Vite keeps an HMR websocket open, so
     // networkidle never settles and would burn the whole timeout.
     const resp = await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
@@ -137,11 +145,18 @@ try {
       horizontalOverflow,
       consoleErrors: errors.consoleErrors,
       pageErrors: errors.pageErrors,
+      failedResponses: errors.failedResponses,
       screenshot: vp.screenshot,
     };
   }
 
-  const brandWarnings = computeBrandWarnings({ hasCanvas: viewports.desktop.hasCanvas });
+  // The screenshots intentionally live under /workspace, but CI checks out the
+  // repository elsewhere. Brand assets must be evaluated in the actual source
+  // tree, not in the screenshot output directory.
+  const brandWarnings = computeBrandWarnings({
+    hasCanvas: viewports.desktop.hasCanvas,
+    workspaceRoot: process.cwd(),
+  });
   // Only a dev server answers /__app-env, so smoking the built output reads as
   // indeterminate — report a divergence, never the absence of an observation.
   const authWarnings = authInvariantWarnings(

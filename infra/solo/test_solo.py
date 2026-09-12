@@ -22,6 +22,21 @@ class Rendering(unittest.TestCase):
             with self.assertRaises(ValueError):
                 valid_sni(sni)
 
+    def test_auto_reality_targets_exclude_known_bad_microsoft_target(self):
+        installer = Path(__file__).with_name('install.sh').read_text()
+        candidate_lines = [
+            line.strip() for line in installer.splitlines()
+            if line.strip().startswith('for target in ')
+        ]
+        self.assertEqual(len(candidate_lines), 1)
+        candidates = candidate_lines[0]
+        # XTLS/Xray-core#6356 reproduces a REALITY reset on Xray 26.3.27
+        # with www.microsoft.com even though direct TLS to that host succeeds.
+        self.assertNotIn('www.microsoft.com', candidates)
+        self.assertIn('www.cloudflare.com', candidates)
+        self.assertIn('www.apple.com', candidates)
+        self.assertIn('www.bing.com', candidates)
+
     def test_rerun_preserves_all_credentials_and_certificates(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
@@ -39,6 +54,11 @@ class Rendering(unittest.TestCase):
             self.assertEqual((base / 'clients').stat().st_mode & 0o777, 0o700)
             config = json.loads((base / 'xray.json').read_text())
             self.assertTrue(config['inbounds'][0]['settings']['clients'])
+            # The solo installer accepts a public IPv4 address only. Both the
+            # Xray internal resolver (used by IPOnDemand) and Freedom egress
+            # therefore stay on A records / IPv4.
+            self.assertEqual(config['dns']['queryStrategy'], 'UseIPv4')
+            self.assertEqual(config['outbounds'][0]['settings']['domainStrategy'], 'UseIPv4')
             client = json.loads((base / 'clients/hysteria-client.json').read_text())
             self.assertFalse(client['tls']['insecure'])
             self.assertEqual(client['tls']['ca'], 'server.crt')

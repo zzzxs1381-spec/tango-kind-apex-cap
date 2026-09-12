@@ -25,7 +25,9 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - name: Core tests
-        run: node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts
+        run: node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/network-intelligence.test.ts
+      - name: Probe agent syntax
+        run: python3 -m py_compile infra/agent/network-probe.py
       - name: Vercel production build
         run: npm run build
       - name: VPS node_server production build

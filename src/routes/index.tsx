@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useApp } from "@/lib/session";
 import { APPS, measureAll, pickTransport } from "@/lib/measure";
-import { pickNode, renderLink } from "@/lib/nodes";
+import { pickNode } from "@/lib/nodes";
 import { locateQuiet } from "@/lib/geo";
 import { LivingPlanet } from "@/components/living-planet";
 
@@ -28,22 +28,48 @@ function Home() {
 
   async function connect() {
     if (phase === "on") {
-      useApp.getState().setPhase("idle", "Нажми «Подключить» — маршрут соберётся сам");
+      useApp.getState().setPhase("idle", "Системное подключение отключено");
       return;
     }
+
+    useApp.getState().setPhase("flying", "Определяю сеть и проверяю доступность…");
+
+    // Refresh location before selecting the nearest candidate node. The old
+    // flow selected a node from stale/default coordinates and only then ran
+    // location discovery in the background.
+    await locateQuiet();
     const me = useApp.getState().person;
     const node = pickNode(me.lat, me.lng);
     useApp.getState().setDest(node.city);
-    useApp.getState().setPhase("flying", `${me.city} → ${node.city}`);
-    void locateQuiet();
+    useApp.getState().setPhase("flying", `${me.city} → кандидат ${node.city} · диагностика`);
+
     const rows = await Promise.race([
       measureAll(),
-      new Promise<Awaited<ReturnType<typeof measureAll>>>((r) => setTimeout(() => r([]), 4200)),
+      new Promise<Awaited<ReturnType<typeof measureAll>>>((resolve) =>
+        window.setTimeout(() => resolve([]), 4200),
+      ),
     ]);
+
     const path = pickTransport(rows);
     useApp.getState().setResults(rows);
-    useApp.getState().setAdvice(renderLink(path.transport, path.sni, path.vector));
-    useApp.getState().setPhase("on", `${me.city} → ${node.city}`);
+
+    const details = rows.length
+      ? rows.map((row) => `${row.label}: ${row.note} · ${row.ms ?? "—"} мс`).join("\n")
+      : "Браузерные пробы не завершились в установленное время.";
+
+    useApp.getState().setAdvice(
+      [
+        "Браузерная диагностика XFreedom",
+        details,
+        "",
+        `transport decision: ${path.transport} (${path.vector})`,
+        "Системный VPN/туннель этим действием НЕ подключён.",
+        "Для выбора HY2/TUIC/REALITY нужны native/server DNS, TCP, TLS, UDP/443 и QUIC-пробы.",
+      ].join("\n"),
+    );
+    useApp
+      .getState()
+      .setPhase("diagnosed", `${me.city} · диагностика завершена · системный VPN не подключён`);
   }
 
   function pay() {
@@ -139,7 +165,7 @@ function Home() {
 
       {tab === "lane" ? (
         <section className="mt-6 grid w-full gap-3">
-          <p className="text-sm text-[var(--color-muted)]">Четыре приоритета · 24/7</p>
+          <p className="text-sm text-[var(--color-muted)]">Приоритетные приложения · браузерная проверка</p>
           <div className="grid grid-cols-2 gap-2">
             {APPS.map((a) => {
               const row = results.find((r) => r.id === a.id);
@@ -152,26 +178,26 @@ function Home() {
                 >
                   <div className="text-sm">{a.label}</div>
                   <div className="mt-1 font-mono text-[11px] text-[var(--color-faint)]">
-                    {row ? `${row.note} · ${row.ms} мс` : "открыть"}
+                    {row ? `${row.note} · ${row.ms ?? "—"} мс` : "не проверено"}
                   </div>
                 </button>
               );
             })}
           </div>
           <pre className="overflow-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-3 font-mono text-[11px] whitespace-pre-wrap text-[var(--color-muted)]">
-            {advice || "Сначала «Подключить» — здесь будет ссылка узла."}
+            {advice || "Сначала запусти проверку сети — здесь появятся измерения и ограничения доказательности."}
           </pre>
           {advice ? (
             <button
               type="button"
               className="glass-btn w-full"
               onClick={async () => {
-                await navigator.clipboard.writeText(advice.split("\n")[0] ?? advice);
+                await navigator.clipboard.writeText(advice);
                 setCopied(true);
                 window.setTimeout(() => setCopied(false), 1200);
               }}
             >
-              {copied ? "Скопировано" : "Скопировать ссылку"}
+              {copied ? "Скопировано" : "Скопировать диагностику"}
             </button>
           ) : null}
         </section>
@@ -183,7 +209,7 @@ function Home() {
             [
               ["home", "Главная"],
               ["pay", "Тариф"],
-              ["lane", "Канал"],
+              ["lane", "Сеть"],
             ] as const
           ).map(([id, label]) => (
             <button

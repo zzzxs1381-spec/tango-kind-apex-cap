@@ -22,8 +22,9 @@ export function LivingPlanet({ onConnect }: { onConnect: () => void }) {
   const dest = useApp((s) => s.dest);
   const status = useApp((s) => s.status);
   const busy = phase === "flying";
+  const diagnosed = phase === "diagnosed";
   const on = phase === "on";
-  const marked = on || busy;
+  const marked = on || busy || diagnosed;
 
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -220,7 +221,7 @@ export function LivingPlanet({ onConnect }: { onConnect: () => void }) {
             onConnect();
           }}
         >
-          {on ? "Отключить" : busy ? "Держу" : "Подключить"}
+          {on ? "Отключить" : busy ? "Проверяю" : diagnosed ? "Проверить снова" : "Проверить сеть"}
         </button>
         <button
           type="button"
@@ -232,8 +233,9 @@ export function LivingPlanet({ onConnect }: { onConnect: () => void }) {
         </button>
       </div>
       <p className="mt-3 max-w-sm px-4 text-center text-sm text-[var(--color-muted)]">{status}</p>
-      {on ? (
+      {on || diagnosed ? (
         <p className="mt-1 text-center font-mono text-[11px] text-[var(--color-faint)]">
+          {diagnosed ? "диагностика · " : ""}
           {person.city}
           {person.ip ? ` · ${person.ip}` : ""} → {dest}
         </p>
