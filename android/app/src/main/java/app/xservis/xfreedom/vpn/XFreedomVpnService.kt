@@ -54,6 +54,7 @@ class XFreedomVpnService : VpnService() {
 
     private fun startXray(config: String) {
         startForegroundNow("Запуск Xray / REALITY")
+        publishState(false, "Запуск Xray / REALITY…")
         if (config.isBlank()) {
             failAndStop("Xray профиль не передан")
             return
