@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { defineHandler, getRequestIP, getRequestURL, readBody } from "nitro/h3";
 
+import { createCisPayPayment } from "@/lib/payments/cispay.server";
 import { createCryptomusPayment } from "@/lib/payments/cryptomus.server";
 import { createFreeKassaPayment } from "@/lib/payments/freekassa.server";
 import {
@@ -12,10 +13,11 @@ import {
 import { getPaymentPlan, paymentPlansConfigured } from "@/lib/payments/plans.server";
 
 const schema = z.object({
-  provider: z.enum(["freekassa", "cryptomus"]),
+  provider: z.enum(["freekassa", "cryptomus", "cispay"]),
   planId: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/),
   email: z.string().email().optional(),
   method: z.enum(["card", "visa", "mastercard", "mir", "sbp"]).optional(),
+  customerId: z.string().min(1).max(100).optional(),
   recurrent: z.boolean().optional(),
   recurrentPeriod: z.enum(["day", "week", "month", "year"]).optional(),
 });
@@ -36,13 +38,17 @@ export default defineHandler(async (event) => {
   if (input.provider === "freekassa" && !input.email) {
     return jsonError("Email is required for FreeKassa");
   }
+  if (input.provider === "cispay" && input.method && !["card", "sbp"].includes(input.method)) {
+    return jsonError("cisPay supports only card or sbp checkout");
+  }
 
   const plan = getPaymentPlan(input.planId);
   if (!plan) return jsonError("Unknown payment plan");
 
   const orderId = `xf_${randomUUID().replace(/-/g, "")}`;
-  const amount = input.provider === "freekassa" ? plan.rubAmount : plan.cryptoAmount;
-  const currency = input.provider === "freekassa" ? "RUB" : plan.cryptoCurrency;
+  const usesRub = input.provider === "freekassa" || input.provider === "cispay";
+  const amount = usesRub ? plan.rubAmount : plan.cryptoAmount;
+  const currency = usesRub ? "RUB" : plan.cryptoCurrency;
 
   await createPaymentOrder({
     id: orderId,
@@ -71,12 +77,26 @@ export default defineHandler(async (event) => {
     }
 
     const requestUrl = getRequestURL(event, { xForwardedHost: true });
-    const callbackBaseUrl = (process.env.XF_PUBLIC_BASE_URL?.trim() || requestUrl.origin).replace(/\/$/, "");
+    const publicBaseUrl = (process.env.XF_PUBLIC_BASE_URL?.trim() || requestUrl.origin).replace(/\/$/, "");
+
+    if (input.provider === "cispay") {
+      const checkout = await createCisPayPayment({
+        orderId,
+        amountRub: amount,
+        method: input.method === "card" ? "card" : "sbp",
+        customerId: input.customerId,
+        returnBaseUrl: publicBaseUrl,
+      });
+      providerOrderCreated = true;
+      await attachCheckout(checkout);
+      return { ok: true, checkout };
+    }
+
     const checkout = await createCryptomusPayment({
       orderId,
       amount,
       currency,
-      callbackBaseUrl,
+      callbackBaseUrl: publicBaseUrl,
     });
     providerOrderCreated = true;
     await attachCheckout(checkout);
