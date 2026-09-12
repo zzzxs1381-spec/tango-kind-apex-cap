@@ -3,7 +3,7 @@ name: XFreedom Android CI
 on:
   push:
     branches:
-      - xfreedom-android-superstack-plan
+      - main
   pull_request:
     branches:
       - main
@@ -11,6 +11,7 @@ on:
       - "android/**"
       - "docs/android-**"
       - ".github/workflows/android-ci.yml"
+      - ".github/workflows/android-release.yml"
 
 permissions:
   contents: read
@@ -18,7 +19,7 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -43,9 +44,56 @@ jobs:
       - name: Assemble debug APK
         run: gradle -p android :app:assembleDebug --stacktrace
 
+      - name: Create ephemeral release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/xfreedom-ci-release.p12"
+          PASSWORD="ci-only-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          keytool -genkeypair \
+            -storetype PKCS12 \
+            -keystore "$KEYSTORE" \
+            -storepass "$PASSWORD" \
+            -keypass "$PASSWORD" \
+            -alias xfreedom-ci \
+            -keyalg RSA \
+            -keysize 3072 \
+            -validity 3650 \
+            -dname "CN=XFreedom CI, OU=Ephemeral, O=XFreedom, C=US"
+          echo "XFREEDOM_ANDROID_KEYSTORE_PATH=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "XFREEDOM_ANDROID_STORE_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          echo "XFREEDOM_ANDROID_KEY_ALIAS=xfreedom-ci" >> "$GITHUB_ENV"
+          echo "XFREEDOM_ANDROID_KEY_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          echo "XFREEDOM_ANDROID_VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          echo "XFREEDOM_ANDROID_VERSION_NAME=0.2.0-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK and AAB
+        run: gradle -p android :app:assembleRelease :app:bundleRelease --stacktrace
+
+      - name: Verify release signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          AAB="android/app/build/outputs/bundle/release/app-release.aab"
+          test -s "$APK"
+          test -s "$AAB"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          jarsigner -verify -verbose -certs "$AAB" >/dev/null
+          sha256sum "$APK" "$AAB"
+
       - uses: actions/upload-artifact@v4
         with:
           name: xfreedom-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xfreedom-android-ci-release
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 3
