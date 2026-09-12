@@ -1,0 +1,44 @@
+name: XFreedom iOS CI
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Resolve Swift packages
+        working-directory: ios
+        run: xcodebuild -resolvePackageDependencies -project XFreedomIOS.xcodeproj -scheme XFreedomIOS
+
+      - name: Build iOS app and PacketTunnel extension without signing
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project XFreedomIOS.xcodeproj \
+            -scheme XFreedomIOS \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
