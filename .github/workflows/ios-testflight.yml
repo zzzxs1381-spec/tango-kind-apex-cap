@@ -1,0 +1,232 @@
+name: XFreedom iOS Signed Field Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Marketing version, for example 0.1.0
+        required: true
+        default: 0.1.0
+      upload_testflight:
+        description: Upload the exported IPA to App Store Connect / TestFlight
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  signed-build:
+    runs-on: macos-26
+    env:
+      APP_BUNDLE_ID: app.xservis.xfreedom.ios
+      TUNNEL_BUNDLE_ID: app.xservis.xfreedom.ios.PacketTunnel
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APP_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_APP_BASE64 }}
+      TUNNEL_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_TUNNEL_BASE64 }}
+      ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      ASC_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_BASE64 }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify required signing secrets are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in APPLE_TEAM_ID CERTIFICATE_P12_BASE64 CERTIFICATE_PASSWORD APP_PROFILE_BASE64 TUNNEL_PROFILE_BASE64; do
+            [[ -n "${!name:-}" ]] || { echo "Missing required GitHub Secret for $name" >&2; exit 1; }
+          done
+          if [[ '${{ inputs.upload_testflight }}' == 'true' ]]; then
+            for name in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64; do
+              [[ -n "${!name:-}" ]] || { echo "Missing App Store Connect API Secret for $name" >&2; exit 1; }
+            done
+          fi
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Install distribution certificate and provisioning profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIGN_DIR="$RUNNER_TEMP/xf-signing"
+          mkdir -p "$SIGN_DIR" "$HOME/Library/MobileDevice/Provisioning Profiles"
+
+          python3 - <<'PY'
+          import base64, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'xf-signing'
+          items = {
+              'distribution.p12': 'CERTIFICATE_P12_BASE64',
+              'app.mobileprovision': 'APP_PROFILE_BASE64',
+              'tunnel.mobileprovision': 'TUNNEL_PROFILE_BASE64',
+          }
+          for filename, env_name in items.items():
+              raw = os.environ.get(env_name, '')
+              if not raw:
+                  raise SystemExit(f'missing {env_name}')
+              (root / filename).write_bytes(base64.b64decode(raw))
+          PY
+
+          KEYCHAIN="$RUNNER_TEMP/xf-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$SIGN_DIR/distribution.p12" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN"
+
+          security cms -D -i "$SIGN_DIR/app.mobileprovision" > "$SIGN_DIR/app.plist"
+          security cms -D -i "$SIGN_DIR/tunnel.mobileprovision" > "$SIGN_DIR/tunnel.plist"
+
+          APP_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$SIGN_DIR/app.plist")"
+          TUNNEL_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$SIGN_DIR/tunnel.plist")"
+          APP_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$SIGN_DIR/app.plist")"
+          TUNNEL_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$SIGN_DIR/tunnel.plist")"
+
+          cp "$SIGN_DIR/app.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$APP_UUID.mobileprovision"
+          cp "$SIGN_DIR/tunnel.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$TUNNEL_UUID.mobileprovision"
+
+          python3 - <<'PY'
+          import os, plistlib, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'xf-signing'
+          expected = [
+              ('app.plist', os.environ['APP_BUNDLE_ID']),
+              ('tunnel.plist', os.environ['TUNNEL_BUNDLE_ID']),
+          ]
+          team = os.environ['APPLE_TEAM_ID']
+          for filename, bundle_id in expected:
+              profile = plistlib.loads((root / filename).read_bytes())
+              teams = profile.get('TeamIdentifier', [])
+              if team not in teams:
+                  raise SystemExit(f'{filename}: TeamIdentifier does not match APPLE_TEAM_ID')
+              entitlements = profile.get('Entitlements', {})
+              app_id = entitlements.get('application-identifier', '')
+              if not app_id.endswith('.' + bundle_id):
+                  raise SystemExit(f'{filename}: application-identifier does not match {bundle_id}')
+              network = entitlements.get('com.apple.developer.networking.networkextension', [])
+              if 'packet-tunnel-provider' not in network:
+                  raise SystemExit(f'{filename}: packet-tunnel-provider entitlement is missing')
+          PY
+
+          {
+            echo "XF_APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            echo "XF_APP_PROFILE_NAME=$APP_NAME"
+            echo "XF_TUNNEL_PROFILE_NAME=$TUNNEL_NAME"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Resolve Swift packages
+        working-directory: ios
+        run: xcodebuild -resolvePackageDependencies -project XFreedomIOS.xcodeproj -scheme XFreedomIOS
+
+      - name: Archive signed device build
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project XFreedomIOS.xcodeproj \
+            -scheme XFreedomIOS \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/XFreedom.xcarchive" \
+            XF_APPLE_TEAM_ID="$XF_APPLE_TEAM_ID" \
+            XF_APP_PROFILE_NAME="$XF_APP_PROFILE_NAME" \
+            XF_TUNNEL_PROFILE_NAME="$XF_TUNNEL_PROFILE_NAME" \
+            MARKETING_VERSION='${{ inputs.version }}' \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            archive
+
+      - name: Export signed IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>uploadSymbols</key><true/>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${APP_BUNDLE_ID}</key><string>${XF_APP_PROFILE_NAME}</string>
+              <key>${TUNNEL_BUNDLE_ID}</key><string>${XF_TUNNEL_PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+
+          mkdir -p "$RUNNER_TEMP/xf-export"
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/XFreedom.xcarchive" \
+            -exportPath "$RUNNER_TEMP/xf-export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+          IPA="$(find "$RUNNER_TEMP/xf-export" -maxdepth 1 -name '*.ipa' -print -quit)"
+          [[ -s "$IPA" ]] || { echo 'Signed IPA was not exported' >&2; exit 1; }
+          cp "$IPA" "$RUNNER_TEMP/XFreedom-${{ inputs.version }}-${GITHUB_RUN_NUMBER}.ipa"
+
+      - name: Validate archive signatures and entitlements
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/XFreedom.xcarchive/Products/Applications/XFreedom.app"
+          EXT="$APP/PlugIns/XFreedomTunnel.appex"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --verify --strict --verbose=2 "$EXT"
+          codesign -d --entitlements :- "$APP" 2> "$RUNNER_TEMP/app-entitlements.plist"
+          codesign -d --entitlements :- "$EXT" 2> "$RUNNER_TEMP/tunnel-entitlements.plist"
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.networking.networkextension' "$RUNNER_TEMP/app-entitlements.plist"
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.networking.networkextension' "$RUNNER_TEMP/tunnel-entitlements.plist"
+
+      - name: Upload signed IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xfreedom-ios-signed-${{ inputs.version }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/XFreedom-${{ inputs.version }}-${{ github.run_number }}.ipa
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Configure App Store Connect API key
+        if: ${{ inputs.upload_testflight }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          ASC_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          python3 - <<'PY'
+          import base64, os, pathlib
+          path = pathlib.Path.home() / '.appstoreconnect' / 'private_keys' / ('AuthKey_' + os.environ['ASC_KEY_ID'] + '.p8')
+          path.write_bytes(base64.b64decode(os.environ['ASC_PRIVATE_KEY_BASE64']))
+          path.chmod(0o600)
+          PY
+
+      - name: Validate and upload to TestFlight
+        if: ${{ inputs.upload_testflight }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA="$RUNNER_TEMP/XFreedom-${{ inputs.version }}-${GITHUB_RUN_NUMBER}.ipa"
+          xcrun altool --validate-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Clean temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/xf-signing" "$RUNNER_TEMP/xf-signing.keychain-db" "$HOME/.appstoreconnect/private_keys" || true
