@@ -8,10 +8,20 @@ on:
         required: false
         default: "0.2.0-field"
       upload_to_play:
-        description: "Reserved for Play upload after Play Console API is connected"
+        description: "Upload the verified AAB to Google Play"
         type: boolean
         required: false
         default: false
+      play_track:
+        description: "Google Play track"
+        type: choice
+        required: false
+        default: internal
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
 
 permissions:
   contents: read
@@ -19,12 +29,13 @@ permissions:
 jobs:
   signed-release:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
       ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
       ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
       ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
     steps:
       - uses: actions/checkout@v4
 
@@ -55,7 +66,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          KEYSTORE="$RUNNER_TEMP/xfreedom-upload-key.p12"
+          KEYSTORE="$RUNNER_TEMP/xfreedom-upload-key.keystore"
           printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
           chmod 600 "$KEYSTORE"
           keytool -list \
@@ -96,16 +107,24 @@ jobs:
             -rfc > release-metadata/upload-certificate.pem
           keytool -printcert -file release-metadata/upload-certificate.pem > release-metadata/upload-certificate.txt
 
-      - name: Refuse unimplemented automatic Play upload
+      - name: Upload AAB to Google Play
         if: ${{ inputs.upload_to_play }}
         shell: bash
         run: |
-          echo "Play upload was requested, but Play Console API credentials are not connected to this repository yet." >&2
-          echo "The signed AAB has been built and verified; automatic store submission is intentionally not faked." >&2
-          exit 1
+          set -euo pipefail
+          : "${GOOGLE_PLAY_SERVICE_ACCOUNT_JSON:?Missing GOOGLE_PLAY_SERVICE_ACCOUNT_JSON GitHub Secret}"
+          PLAY_KEY="$RUNNER_TEMP/google-play-service-account.json"
+          printf '%s' "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > "$PLAY_KEY"
+          chmod 600 "$PLAY_KEY"
+          python3 -m pip install --disable-pip-version-check --no-cache-dir "google-auth>=2.40,<3" "requests>=2.32,<3"
+          python3 scripts/google-play-upload.py \
+            --service-account "$PLAY_KEY" \
+            --package app.xservis.xfreedom \
+            --bundle android/app/build/outputs/bundle/release/app-release.aab \
+            --track "${{ inputs.play_track }}" \
+            --release-name "XFreedom $XFREEDOM_ANDROID_VERSION_NAME"
 
       - uses: actions/upload-artifact@v4
-        if: ${{ !inputs.upload_to_play }}
         with:
           name: xfreedom-android-signed-${{ github.run_number }}
           path: |
@@ -117,8 +136,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Remove signing material
+      - name: Remove signing and Play credentials
         if: always()
         shell: bash
         run: |
-          rm -f "$RUNNER_TEMP/xfreedom-upload-key.p12"
+          rm -f "$RUNNER_TEMP/xfreedom-upload-key.keystore"
+          rm -f "$RUNNER_TEMP/google-play-service-account.json"
