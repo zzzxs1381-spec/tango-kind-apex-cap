@@ -32,6 +32,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     buildFeatures {
@@ -55,6 +56,11 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+
+    // Official WireGuard embeddable Android tunnel library. Upstream current
+    // version is 1.0.20260315 and is Apache-2.0 licensed.
+    implementation("com.wireguard.android:tunnel:1.0.20260315")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
