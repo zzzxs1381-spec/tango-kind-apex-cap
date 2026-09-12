@@ -3,6 +3,12 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { FreeKassaMethod, PaymentCheckout, VerifiedPaymentEvent } from "./types";
 
 const FK_API_BASE = "https://api.fk.life/v1";
+const FK_WEBHOOK_IPS = [
+  "168.119.157.136",
+  "168.119.60.227",
+  "178.154.197.79",
+  "51.250.54.238",
+];
 let lastNonce = 0;
 
 function requireEnv(name: string): string {
@@ -130,13 +136,14 @@ export function verifyFreeKassaWebhook(data: Record<string, string>): VerifiedPa
     status: "paid",
     paid: true,
     amount,
-    currency: data.CUR_ID ?? data.CURRENCY ?? "RUB",
+    // CUR_ID identifies the payment method (card/SBP/etc.), not the invoice currency.
+    currency: "RUB",
     providerPaymentId: data.intid,
   };
 }
 
 export function isFreeKassaWebhookIpAllowed(ip: string | undefined): boolean {
-  const configured = process.env.XF_FK_WEBHOOK_IPS?.split(",").map((value) => value.trim()).filter(Boolean) ?? [];
-  if (configured.length === 0) return true;
-  return Boolean(ip && configured.includes(ip));
+  const configured = process.env.XF_FK_WEBHOOK_IPS?.split(",").map((value) => value.trim()).filter(Boolean);
+  const allowed = configured && configured.length > 0 ? configured : FK_WEBHOOK_IPS;
+  return Boolean(ip && allowed.includes(ip));
 }
