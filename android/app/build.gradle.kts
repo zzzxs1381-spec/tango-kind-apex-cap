@@ -1,3 +1,4 @@
+import java.io.File
 import java.net.URI
 import java.security.MessageDigest
 import java.util.zip.ZipInputStream
@@ -45,9 +46,10 @@ val fetchLibXray by tasks.registering {
             while (true) {
                 val entry = zip.nextEntry ?: break
                 if (!entry.isDirectory && entry.name.substringAfterLast('/') == "libXray.aar") {
-                    val temp = target.resolveSibling(target.name + ".tmp")
+                    val temp = File(target.parentFile, target.name + ".tmp")
                     temp.outputStream().use { output -> zip.copyTo(output) }
                     check(temp.length() > 0) { "libXray.aar is empty" }
+                    if (target.exists()) target.delete()
                     check(temp.renameTo(target)) { "Unable to install libXray.aar" }
                     extracted = true
                     break
