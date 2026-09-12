@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - "android/**"
+      - "scripts/google-play-upload.py"
       - "docs/android-**"
       - ".github/workflows/android-ci.yml"
       - ".github/workflows/android-release.yml"
@@ -37,6 +38,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.6.0"
+
+      - name: Validate Play uploader syntax
+        run: python3 -m py_compile scripts/google-play-upload.py
 
       - name: Unit tests
         run: gradle -p android :app:testDebugUnitTest --stacktrace
