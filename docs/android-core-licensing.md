@@ -15,6 +15,8 @@ There is no top-level `LICENSE` file in this repository at the time this documen
 
 Because of that, the Android bootstrap does **not** yet embed `libbox` even though it is technically attractive and supports many transports in one core. Shipping a GPL-3.0 library inside an APK without deciding how the application itself will be licensed would be irresponsible.
 
+The first service-native production backend is the official WireGuard Android tunnel library. The branch pins the latest version currently published in Maven Central, `com.wireguard.android:tunnel:1.0.20260102`. A newer number found only in upstream source metadata is not treated as a distributable Maven version until the artifact is actually published.
+
 ## Recommended production split
 
 Use an adapter boundary:
