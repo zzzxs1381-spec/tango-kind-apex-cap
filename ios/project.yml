@@ -1,0 +1,47 @@
+name: XFreedomIOS
+options:
+  bundleIdPrefix: app.xservis.xfreedom
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+packages:
+  SwiftyXrayKit:
+    url: https://github.com/dima-u/SwiftyXrayKit.git
+    from: 1.1.0
+targets:
+  XFreedomIOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.xservis.xfreedom.ios
+        INFOPLIST_FILE: Config/App-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/App.entitlements
+        PRODUCT_NAME: XFreedom
+    dependencies:
+      - target: XFreedomTunnel
+        embed: true
+  XFreedomTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Tunnel
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.xservis.xfreedom.ios.PacketTunnel
+        INFOPLIST_FILE: Config/Tunnel-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/Tunnel.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        PRODUCT_NAME: XFreedomTunnel
+    dependencies:
+      - package: SwiftyXrayKit
