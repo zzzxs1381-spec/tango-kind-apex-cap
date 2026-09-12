@@ -5,7 +5,10 @@ plugins {
 
 android {
     namespace = "app.xservis.xfreedom"
-    compileSdk = 37
+    // Android 17 / API 37 is still distributed as a preview SDK. Keep the
+    // production APK on the stable Android 16 platform and exercise API 37 in
+    // a separate preview lane when the preview repository is explicitly used.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.xservis.xfreedom"
