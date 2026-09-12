@@ -6,7 +6,12 @@ options:
   xcodeVersion: "26.0"
 settings:
   base:
-    SWIFT_VERSION: "6.0"
+    # Temporary compatibility mode for SwiftyXrayKit 1.1.0. Xcode 26 / iOS 26
+    # SDK stays current; Swift 5 language mode keeps the upstream bridge's
+    # NEPacketTunnelFlow actor handoff as warnings instead of unsound local
+    # @unchecked Sendable retroactive conformances. Migrate back to Swift 6
+    # when the Apple bridge is updated.
+    SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: minimal
     IPHONEOS_DEPLOYMENT_TARGET: "16.0"
     TARGETED_DEVICE_FAMILY: "1,2"
