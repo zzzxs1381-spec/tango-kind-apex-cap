@@ -2,13 +2,13 @@ name: XFreedomIOS
 options:
   bundleIdPrefix: app.xservis.xfreedom
   deploymentTarget:
-    iOS: "15.0"
+    iOS: "16.0"
   xcodeVersion: "26.0"
 settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: minimal
-    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
     TARGETED_DEVICE_FAMILY: "1,2"
 packages:
   SwiftyXrayKit:
