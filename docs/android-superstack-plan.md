@@ -24,7 +24,10 @@ TLS Tunnel feature set to match or exceed:
 - TLS 1.3 based encrypted connections;
 - private server mode with SSH support;
 - IPv6 readiness;
-- server list, random server selection, access renewal/status;
+- UDP/DTLS mode;
+- DoH host analysis;
+- Wakelock/Wifilock/Pinger behavior;
+- recovery when Wi-Fi and mobile data are both active;
 - battery-conscious Android background service.
 
 Do not reverse engineer, decompile or copy proprietary code/assets. Implement with our own UX, open protocols and licensed cores.
@@ -37,36 +40,44 @@ Do not reverse engineer, decompile or copy proprietary code/assets. Implement wi
 - Jetpack Compose UI.
 - Android VpnService for TUN permission and packet routing.
 - ForegroundService with persistent notification.
-- Room or SQLDelight for local state.
-- DataStore for settings.
-- WorkManager for scheduled probes and config refresh.
-- Rust/Kotlin shared engine via JNI only when native performance is needed.
+- Room or SQLDelight for local state later.
+- DataStore for settings later.
+- WorkManager for scheduled probes and config refresh later.
 
 ### Network core
 
-Primary core strategy:
+Use an adapter boundary instead of hard-wiring the entire app to one native core:
 
-1. sing-box compatible core for TUN, routing, DNS, split tunneling, shadowsocks, vless/vmess, wireguard family where supported.
-2. Xray-core embedded/managed for REALITY/Vision/XHTTP where sing-box support is incomplete.
-3. Hysteria2 official core/client integration for QUIC/HY2.
-4. TUIC v5 adapter where supported by the selected core.
-5. SSH/TLS/HTTP payload module as compatibility fallback, not as the first option.
+1. Xray adapter for REALITY/Vision/XHTTP and compatible proxy protocols.
+2. Hysteria2 adapter for QUIC/HY2.
+3. WireGuard Android tunnel adapter.
+4. TUIC v5 adapter where the selected runtime supports it.
+5. SSH/TLS/HTTP payload compatibility module.
+6. DNSTT/SlowDNS emergency module.
+
+A sing-box/libbox adapter remains technically attractive, but must not be silently embedded until the application license is explicitly chosen because the Android libbox package is GPL-3.0.
 
 ### Transports
 
-Decision order for normal networks:
+Decision order is conditional on fresh evidence, not globally hardcoded.
 
-1. Hysteria2 Native, UDP/443, valid TLS, no obfs by default.
-2. TUIC v5, UDP/443.
-3. Hysteria2 Obfuscated, salamander, only when native HY2 fails and server supports it.
-4. VLESS Reality, TCP/443.
-5. VLESS XHTTP / WebSocket TLS fallback.
-6. SSH over TLS/SNI/payload compatibility mode.
-7. DNS tunnel / SlowDNS emergency mode only for very restricted networks and low-bandwidth tasks.
+When UDP/443 + QUIC are confirmed:
+
+1. Hysteria2 Native.
+2. TUIC v5.
+3. Hysteria2 Obfuscated.
+4. VLESS Reality / TCP fallback.
+
+When UDP is measured unavailable but TCP/443 + TLS are healthy:
+
+1. VLESS Reality.
+2. SSH/TLS compatibility fallback.
+
+DNS tunnel / SlowDNS is emergency-only for low-bandwidth restricted networks.
 
 ### XFreedom intelligence layer
 
-Use the existing PR #9 NetworkSnapshot contract:
+Use the existing NetworkSnapshot contract:
 
 - DNS state: pass/fail/unknown.
 - TCP/443 state.
@@ -77,107 +88,90 @@ Use the existing PR #9 NetworkSnapshot contract:
 - access type: mobile/wifi/ethernet/unknown.
 - optional operator/ASN/region/city labels.
 
-Never classify browser-only failure as DPI proof. Use suspected/unknown unless native evidence is enough.
+Never classify one timeout as proof of DPI. Use suspected/unknown unless independent evidence is sufficient.
 
 ### Server stack
 
-- Foreign core nodes: REALITY, HY2, TUIC, WireGuard/AmneziaWG where lawful and configured.
-- RU edge node: diagnostics, status relay and failover edge when legally appropriate.
-- Control Center: node health, config generation, key rotation, revocation, snapshots, regional success rates.
+- Foreign core nodes: REALITY, HY2, TUIC, WireGuard/AmneziaWG where configured.
+- RU edge node: diagnostics/status relay/failover where appropriate.
+- Control Center: health, config generation, key rotation, revocation, snapshots and regional success rates.
 - PostgreSQL for accounts/orders/config metadata.
 - Qdrant for network snapshot memory and retrieval.
-- Prometheus-compatible health metrics later.
 
 ## Android modules
 
 ```text
 android/
   app/
-    ui/                 Compose screens
-    vpn/                VpnService, TUN lifecycle, foreground service
-    probes/             DNS/TCP/TLS/QUIC/app checks
-    engine/             DecisionEngine client and local fallback rules
-    core/               sing-box/Xray/HY2 process management
-    config/             URI + JSON profile generators
-    data/               Room/DataStore models
-    security/           keystore, cert pinning, encrypted configs
-    telemetry/          consented diagnostics only
+    MainActivity.kt
+    network/
+      NetworkModels.kt
+      SystemProbeEngine.kt
+      DecisionEngine.kt
+    vpn/
+      XFreedomVpnService.kt
+      TunnelBackend.kt
+    config/
+      ProfileGenerators.kt
 ```
-
-## Screens
-
-1. Onboarding: privacy, VPN permission, no packet payload capture.
-2. Main: one large CONNECT button, current network, chosen route.
-3. Diagnostics: evidence list with statuses and confidence.
-4. Apps: WhatsApp, Telegram, YouTube, Instagram, TikTok post-connect checks.
-5. Servers: auto/best/manual.
-6. Advanced: import/export profiles, DNS, split tunneling, provider mode.
-7. Control Center login for admins.
-
-## Provider mode
-
-- Export locked configs.
-- Sign config bundles.
-- Encrypt secrets at rest.
-- Revoke by config id/user id/device id.
-- Never expose REALITY private key to clients.
 
 ## Security rules
 
 - No hardcoded production secrets.
-- Android Keystore for local keys.
-- TLS certificate pinning for control API.
-- Signed remote config bundles.
-- Kill switch support.
-- Split tunneling must be explicit.
+- Android Keystore for local secrets in the production profile store.
+- TLS server-name verification enabled.
+- `insecure=true` is not emitted by normal profile generators.
+- REALITY private key never leaves the server.
+- TUIC 0-RTT is disabled by default.
+- Signed remote config bundles before production rollout.
 - Logs must redact UUIDs, passwords, private keys, access tokens and proxy credentials.
+- No packet payload capture by default.
 
-## MVP build phases
+## Implementation status — active
 
-### Phase 1 — Android shell
+A real standalone Android project now exists under `android/`.
 
-- Kotlin/Compose project.
-- VpnService permission.
-- Foreground service.
-- Main screen and Diagnostics screen.
-- Local NetworkSnapshot model.
+Implemented now:
 
-### Phase 2 — probes
+- AGP 9.4.0 / compileSdk 37 / targetSdk 36 / JDK 17 project;
+- Jetpack Compose main UI;
+- Android `VpnService` permission flow;
+- foreground-service lifecycle using `specialUse` for the user-initiated VPN process;
+- Wi-Fi / cellular / Ethernet access-type detection;
+- native DNS, TCP/443, TLS and HTTPS probes;
+- priority probes for WhatsApp, TikTok, YouTube, Instagram and Telegram;
+- Android NetworkSnapshot model;
+- evidence-based classifier and transport decision engine;
+- Hysteria2, TUIC v5 and VLESS Reality profile generators;
+- unit tests for decision and profile safety rules;
+- dedicated Android CI which builds a debug APK artifact.
 
-- DNS resolver test.
-- TCP/443 socket test.
-- TLS handshake test with SNI.
-- QUIC/HTTP3 check through bundled/native library or core.
-- App endpoint checks without login and without payload capture.
+Deliberately not faked:
 
-### Phase 3 — config and core
+- no empty TUN is established before a native packet-forwarding core is linked;
+- generic UDP/443 / QUIC remain `UNKNOWN` until a real QUIC-capable probe/core is integrated;
+- no claim of working packet forwarding is made yet;
+- no regional Russia/Crimea success claim without on-device evidence.
 
-- Generate HY2, TUIC, REALITY and sing-box configs.
-- Start selected core.
-- Attach TUN through VpnService.
-- Verify tunnel.
+## Next slices
 
-### Phase 4 — backend
-
-- Endpoint for signed node list.
-- Endpoint for anonymous NetworkSnapshot upload.
-- Control Center integration.
-- Qdrant memory write.
-
-### Phase 5 — release hardening
-
-- Battery tests.
-- Android 8–15 compatibility.
-- Play Console privacy labels.
-- Crash reporting without secrets.
-- Reproducible build notes.
+1. make Android CI green and retrieve the produced debug APK;
+2. choose/add the repository application license;
+3. link the first audited native tunnel backend;
+4. add QUIC/UDP probes;
+5. add encrypted local profile storage and import/export;
+6. add per-app split tunneling;
+7. add post-connect app verification and automatic failover;
+8. connect snapshots to the XFreedom backend/Qdrant history layer;
+9. validate on real Russian networks by operator/region/access type.
 
 ## Definition of done
 
-- User can install APK, grant VPN permission once and connect.
-- App auto-selects transport from fresh native measurements.
+- User installs APK and grants VPN permission once.
+- App measures the current network before transport selection.
+- A production native core forwards real packets through the selected tunnel.
 - Transport failover works without UI freezing.
 - Priority app checks run after connection.
 - Admin can revoke configs.
-- CI builds web, server and Android debug APK.
-- No claim of Russia/Crimea success without real regional probe evidence.
+- CI builds web, server and Android APK.
+- No censorship mechanism or regional success is claimed without evidence.
