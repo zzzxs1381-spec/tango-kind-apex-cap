@@ -85,7 +85,7 @@ export async function recordVerifiedPaymentEvent(input: {
     throw new Error("Payment currency mismatch");
   }
 
-  const eventRows = await sql<{ id: number }>.query(
+  const eventRows = await sql.query<{ id: number }>(
     `INSERT INTO payment_events (provider, event_key, order_id, status, payload)
      VALUES ($1, $2, $3, $4, $5::jsonb)
      ON CONFLICT (provider, event_key) DO NOTHING
