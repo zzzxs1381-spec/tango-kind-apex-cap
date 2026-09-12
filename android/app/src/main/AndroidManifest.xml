@@ -26,7 +26,8 @@
             android:name=".vpn.XFreedomVpnService"
             android:exported="true"
             android:foregroundServiceType="specialUse"
-            android:permission="android.permission.BIND_VPN_SERVICE">
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:process=":xray">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
