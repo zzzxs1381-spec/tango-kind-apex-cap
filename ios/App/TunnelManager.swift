@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import NetworkExtension
 
 @MainActor
@@ -76,7 +77,7 @@ final class TunnelManager: ObservableObject {
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
-                    continuation.resume()
+                    continuation.resume(returning: ())
                 }
             }
         }
@@ -88,7 +89,7 @@ final class TunnelManager: ObservableObject {
                 if let error {
                     continuation.resume(throwing: error)
                 } else {
-                    continuation.resume()
+                    continuation.resume(returning: ())
                 }
             }
         }
