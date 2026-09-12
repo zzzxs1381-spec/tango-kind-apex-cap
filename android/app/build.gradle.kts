@@ -5,9 +5,8 @@ plugins {
 
 android {
     namespace = "app.xservis.xfreedom"
-    // Android 17 / API 37 is still distributed as a preview SDK. Keep the
-    // production APK on the stable Android 16 platform and exercise API 37 in
-    // a separate preview lane when the preview repository is explicitly used.
+    // Android 17 / API 37 is still a preview SDK. Keep the production APK on
+    // stable Android 16 while preserving targetSdk independently at 36.
     compileSdk = 36
 
     defaultConfig {
@@ -45,7 +44,9 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    // Compose 1.12 requires compileSdk 37. The June stable BOM remains on the
+    // Compose 1.11 line and is the production choice for stable Android 16.
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
