@@ -27,14 +27,24 @@ Android field release считается собранным только есл�
 
 ## Google Play
 
-Для нового приложения предпочтительна схема Play App Signing:
+Для нового приложения используется Play App Signing:
 
 1. Google Play хранит app signing key.
 2. XFreedom хранит отдельный upload key.
 3. В Play Console регистрируется сертификат upload key.
 4. В CI AAB подписывается upload key перед загрузкой.
 
-Автоматическая загрузка в Play Console не считается настроенной, пока у репозитория нет отдельного Play Developer API service account с минимально необходимыми правами. Workflow намеренно не имитирует этот шаг.
+Для автоматической загрузки используется официальный Google Play Android Developer API. В GitHub Secret `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` хранится JSON service account, которому в Play Console выданы только необходимые права на XFreedom.
+
+Когда `upload_to_play=true`, workflow:
+
+1. создаёт Play edit;
+2. загружает проверенный AAB;
+3. назначает release выбранному track (по умолчанию `internal`);
+4. commit'ит edit;
+5. завершает job ошибкой, если любой реальный API-вызов не прошёл.
+
+Первое создание приложения, проверка developer identity и предоставление service account доступа выполняются внутри Google Play Console и не могут быть достоверно имитированы кодом репозитория.
 
 ## Field acceptance перед публикацией
 
