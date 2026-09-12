@@ -4,15 +4,17 @@ This directory contains the first iPhone/iPad field-release implementation.
 
 ## Runtime path
 
-SwiftUI app -> NETunnelProviderManager -> NEPacketTunnelProvider -> SwiftyXrayKit/XrayBridge -> Xray REALITY outbound.
+SwiftUI app -> NETunnelProviderManager -> NEPacketTunnelProvider -> SwiftyXrayKit `XRayTunnel` -> local Xray SOCKS inbound -> tun2socks packet bridge -> Xray REALITY outbound.
 
 The initial field build intentionally supports only imported VLESS/REALITY profiles. It does not claim Hysteria2/TUIC/AWG support until those native runtimes are linked and device-tested.
 
 ## Why SwiftyXrayKit for the first field build
 
-Apple's public Packet Tunnel API exposes `NEPacketTunnelFlow`, not a documented raw utun file descriptor. The field build therefore uses SwiftyXrayKit's packetFlow-to-Xray SOCK_STREAM socketpair bridge rather than relying on KVC/private utun descriptor extraction.
+Apple's public Packet Tunnel API exposes `NEPacketTunnelFlow`, not a documented raw utun file descriptor. SwiftyXrayKit 1.1.0 works with `NEPacketTunnelFlow` directly: its `XRayTunnel` creates a local Xray SOCKS inbound and bridges packets with its tun2socks/Outline adapter. XFreedom therefore does not use KVC/private utun descriptor extraction.
 
 Current trade-off: SwiftyXrayKit 1.1.x is based on Xray-core v26.3.27. Android already uses newer libXray. After the first iPhone packet-forwarding test, XFreedom should own/pin an updated Apple bridge build based on current Xray-core while preserving the same public NetworkExtension architecture.
+
+The field target is built with Xcode 26 and current iOS SDKs, but temporarily uses Swift 5 language mode because SwiftyXrayKit 1.1.0 is not Swift-6 strict-concurrency clean around `NEPacketTunnelFlow`. This avoids adding unsafe retroactive `Sendable` declarations to Apple framework types. Move back to Swift 6 when the bridge is upgraded.
 
 ## Build without signing
 
@@ -27,6 +29,10 @@ xcodebuild -project XFreedomIOS.xcodeproj \
   CODE_SIGNING_REQUIRED=NO \
   build
 ```
+
+## Profile storage note
+
+For the first field build the VLESS/REALITY share link is stored in the system-managed `NETunnelProviderManager` configuration so the PacketTunnel extension can receive it. Production hardening should move credential-bearing material into Keychain/App Group Keychain storage and keep only a profile identifier in provider configuration.
 
 ## Physical device requirements
 
