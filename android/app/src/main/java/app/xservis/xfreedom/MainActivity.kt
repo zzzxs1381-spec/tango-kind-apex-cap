@@ -1,5 +1,6 @@
 package app.xservis.xfreedom
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
@@ -7,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -86,7 +88,7 @@ private fun XFreedomScreen() {
     val vpnPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        if (result.resultCode == ComponentActivity.RESULT_OK) {
+        if (result.resultCode == Activity.RESULT_OK) {
             startVpnService()
         } else {
             status = "Системное разрешение VPN не выдано"
