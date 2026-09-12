@@ -57,9 +57,10 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
 
-    // Official WireGuard embeddable Android tunnel library. Upstream current
-    // version is 1.0.20260315 and is Apache-2.0 licensed.
-    implementation("com.wireguard.android:tunnel:1.0.20260315")
+    // Published Maven Central release of the official WireGuard embeddable
+    // Android tunnel library. Do not use source-tree metadata as a Maven
+    // version until that artifact is actually published.
+    implementation("com.wireguard.android:tunnel:1.0.20260102")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
