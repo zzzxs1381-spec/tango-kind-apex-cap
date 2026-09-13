@@ -18,7 +18,7 @@ interface TunnelEngine {
     fun migrate()
 }
 class TlsTunnelEngine(private val service:VpnService,private val notify:(TunnelStage,TunnelEvidence)->Unit):TunnelEngine {
-    private val executor=Executors.newSingleThreadScheduledExecutor()
+    private val executor=java.util.concurrent.ScheduledThreadPoolExecutor(1).apply { setExecuteExistingDelayedTasksAfterShutdownPolicy(false) }
     private val bridge=PacketBridge(service)
     private var client:XfTlsClient?=null
     private var socks:LoopbackSocks?=null

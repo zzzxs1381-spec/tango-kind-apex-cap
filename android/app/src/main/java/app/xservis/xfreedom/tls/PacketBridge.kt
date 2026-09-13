@@ -34,6 +34,7 @@ class PacketBridge(private val service: VpnService) : Closeable {
         LibXray.registerDialerController(controller)
         LibXray.registerListenerController(controller)
         val root=buildConfig(fd,socks.port,socks.username,socks.password)
+        running=true
         val result=invoke("runXray",JSONObject().put("xrayJson",root.toString()))
         check(result.optBoolean("success")) { "Ядро отклонило PacketBridge" }
         running=true

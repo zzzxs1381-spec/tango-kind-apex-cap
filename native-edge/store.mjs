@@ -18,7 +18,9 @@ export class PostgresStore {
     try {
       await db.query('BEGIN');
       const result=await db.query('SELECT * FROM xf_native_sessions WHERE id=$1 AND expires_at>now() FOR UPDATE',[sid]);
-      const current=result.rows[0]; if(!current) throw Error('session_expired');
+      const current=result.rows[0];
+      if(current){current.generation=Number(current.generation);current.sequence=Number(current.sequence);}
+      if(!current) throw Error('session_expired');
       if(event.generation<current.generation || event.generation===current.generation && event.sequence<=current.sequence) {
         await db.query('ROLLBACK');return {accepted:false,reason:'stale_or_duplicate',webConnected:false};
       }
