@@ -65,7 +65,13 @@ class MainActivity : ComponentActivity() {
                     primary = Color(0xFF7DE8D8),
                 ),
             ) {
-                XFreedomScreen()
+                var diagnostics by remember { mutableStateOf(false) }
+                if (diagnostics) {
+                    Column {
+                        androidx.compose.material3.TextButton(onClick = { diagnostics = false }) { Text("← Главная") }
+                        XFreedomScreen()
+                    }
+                } else app.xservis.xfreedom.tls.NeonScreen { diagnostics = true }
             }
         }
     }
@@ -80,7 +86,7 @@ private fun XFreedomScreen() {
     var snapshot by remember { mutableStateOf<NetworkSnapshot?>(null) }
     var decision by remember { mutableStateOf<TransportDecision?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf(readRuntimeMessage(context)) }
+    var status by remember { mutableStateOf("Готово к диагностике") }
     var verification by remember { mutableStateOf<String?>(null) }
 
     var wireGuardConfig by remember { mutableStateOf<String?>(null) }
@@ -147,7 +153,18 @@ private fun XFreedomScreen() {
                 return@Thread
             }
 
-            Thread.sleep(900)
+            val proof = app.xservis.xfreedom.tls.VpnVerifier.verify(
+                context.applicationContext, "https://xservis.app", true,
+            ) { wireGuard.state() == com.wireguard.android.backend.Tunnel.State.UP }
+            if (!proof.connected) {
+                wireGuard.disconnect()
+                activity?.runOnUiThread {
+                    busy = false
+                    wireGuardConnected = false
+                    status = "Интернет через WireGuard не подтверждён"
+                }
+                return@Thread
+            }
             val check = before?.let {
                 PostConnectVerifier.compare(it, SystemProbeEngine(context.applicationContext).collect())
             }
@@ -246,59 +263,17 @@ private fun XFreedomScreen() {
         }
     }
 
-    LaunchedEffect(xrayRequested) {
-        if (!xrayRequested) return@LaunchedEffect
-        var sawStartup = false
-        repeat(40) {
-            delay(500)
-            val prefs = context.getSharedPreferences(XFreedomVpnService.PREFS, Context.MODE_PRIVATE)
-            val connected = prefs.getBoolean(XFreedomVpnService.KEY_CONNECTED, false)
-            val message = prefs.getString(XFreedomVpnService.KEY_MESSAGE, null).orEmpty()
-            if (message.startsWith("Запуск Xray")) sawStartup = true
-
-            if (connected) {
-                xrayConnected = true
-                activeTransport = TransportName.VLESS_REALITY
-                status = message.ifBlank { "REALITY runtime запущен" }
-
-                val before = snapshot
-                if (before != null) {
-                    delay(900)
-                    val after = withContext(Dispatchers.IO) {
-                        SystemProbeEngine(context.applicationContext).collect()
-                    }
-                    val check = PostConnectVerifier.compare(before, after)
-                    verification = check.reason
-                    if (check.action == VerificationAction.TRY_FALLBACK) {
-                        stopReality()
-                        status = "REALITY отклонён post-connect проверкой"
-                    } else {
-                        status = when (check.action) {
-                            VerificationAction.KEEP_TUNNEL -> "REALITY подтверждён post-connect проверкой"
-                            VerificationAction.COLLECT_MORE_EVIDENCE -> "REALITY подключён; результат проверки неоднозначен"
-                            VerificationAction.TRY_FALLBACK -> status
-                        }
-                    }
-                }
-                return@LaunchedEffect
-            }
-
-            if (
-                sawStartup &&
-                (message.startsWith("REALITY:") || message.startsWith("Xray профиль") || message == "Отключено")
-            ) {
+    val nativeState = app.xservis.xfreedom.tls.rememberVpnState()
+    LaunchedEffect(nativeState) {
+        if (xrayRequested || xrayConnected) {
+            xrayConnected = nativeState.stage == app.xservis.xfreedom.tls.TunnelStage.CONNECTED
+            status = XFreedomVpnService.stageLabel(nativeState.stage)
+            if (xrayConnected) activeTransport = TransportName.VLESS_REALITY
+            if (nativeState.stage == app.xservis.xfreedom.tls.TunnelStage.IDLE) {
                 xrayRequested = false
-                xrayConnected = false
-                if (activeTransport == TransportName.VLESS_REALITY) activeTransport = null
-                status = message
-                return@LaunchedEffect
+                activeTransport = null
             }
         }
-
-        xrayRequested = false
-        xrayConnected = false
-        if (activeTransport == TransportName.VLESS_REALITY) activeTransport = null
-        status = "REALITY: запуск не подтвердился за контрольное окно"
     }
 
     Surface(
@@ -513,3 +488,4 @@ private fun readRuntimeMessage(context: Context): String =
             XFreedomVpnService.KEY_MESSAGE,
             "Готово. Импортируйте REALITY JSON или WireGuard .conf и нажмите «Подключить».",
         ) ?: "Готово к диагностике"
+
