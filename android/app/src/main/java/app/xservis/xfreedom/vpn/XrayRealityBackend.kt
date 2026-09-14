@@ -73,6 +73,13 @@ class XrayRealityBackend(private val sourceConfig: String) : TunnelBackend {
         vpnInterface = null
     }
 
+    fun interfaceUp(): Boolean = vpnInterface != null
+
+    fun health(): Boolean = running && runCatching {
+        val state = invoke("getXrayState", JSONObject())
+        state.optBoolean("success") && state.optJSONObject("data")?.optBoolean("running") == true
+    }.getOrDefault(false)
+
     override fun disconnect() {
         stopCore()
         vpnInterface?.close()
@@ -128,3 +135,4 @@ class XrayRealityBackend(private val sourceConfig: String) : TunnelBackend {
         const val MAX_CONFIG_BYTES = 256 * 1024
     }
 }
+

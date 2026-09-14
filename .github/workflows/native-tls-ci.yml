@@ -1,0 +1,37 @@
+name: XFreedom native TLS proof
+on:
+  pull_request:
+    paths: ["native-edge/**", "android/**", "src/routes/api/native/**", ".github/workflows/native-tls-ci.yml"]
+  push:
+    branches: ["xfreedom-native-tls-20260913"]
+permissions:
+  contents: read
+jobs:
+  edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: xfreedom
+          POSTGRES_PASSWORD: ci-local-only
+          POSTGRES_DB: xfreedom
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U xfreedom"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://xfreedom:ci-local-only@127.0.0.1:5432/xfreedom
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --prefix native-edge --ignore-scripts --package-lock=false pg@8.16.3
+      - run: node --test native-edge/*.test.mjs
+      - run: node native-edge/selftest.mjs > selftest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xf-tls1-local-proof
+          path: selftest.json
