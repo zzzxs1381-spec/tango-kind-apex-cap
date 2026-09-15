@@ -11,23 +11,30 @@ const rules = policy.rules.map((r) => ({ ...r, re: new RegExp(r.pattern, 'i') })
 const ignoredDirs = new Set(['.git', 'node_modules', '.venv', 'venv', 'dist', 'build', '.next']);
 const ignoredExt = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.pdf', '.zip', '.gz', '.7z', '.woff', '.woff2']);
 const maxFileBytes = Number(process.env.XF_AUDIT_MAX_FILE_BYTES || 2 * 1024 * 1024);
+const riskRank = { low: 0, review: 1, high: 2, critical: 3 };
 
 function usage() {
   console.log('Usage: node audit-mcp.mjs <path> [--json] [--fail-on review|high|critical]');
   console.log('       node audit-mcp.mjs --self-test');
 }
 
-function classify(score) {
+function scoreRisk(score) {
   if (score >= policy.thresholds.critical) return 'critical';
   if (score >= policy.thresholds.high) return 'high';
   if (score >= policy.thresholds.review) return 'review';
   return 'low';
 }
 
-function thresholdFor(level) {
-  if (level === 'critical') return policy.thresholds.critical;
-  if (level === 'high') return policy.thresholds.high;
-  return policy.thresholds.review;
+function capabilityRisk(capability) {
+  const disposition = policy.capabilities[capability] || 'review';
+  if (disposition === 'deny') return 'critical';
+  if (disposition === 'high') return 'high';
+  if (disposition === 'review') return 'review';
+  return 'low';
+}
+
+function maxRisk(levels) {
+  return levels.reduce((best, level) => riskRank[level] > riskRank[best] ? level : best, 'low');
 }
 
 function scanText(text, file) {
@@ -74,18 +81,27 @@ function audit(target) {
     if (text.includes('\u0000')) continue;
     findings.push(...scanText(text, path.relative(root, file) || path.basename(file)));
   }
-  const score = findings.reduce((sum, f) => sum + f.score, 0);
+
+  const matchedRuleIds = new Set(findings.map((f) => f.rule));
+  const score = rules.filter((r) => matchedRuleIds.has(r.id)).reduce((sum, r) => sum + r.score, 0);
   const capabilities = [...new Set(findings.map((f) => f.capability))].sort();
-  return { target: root, filesScanned: files.length, score, risk: classify(score), capabilities, findings };
+  const capabilityPolicies = capabilities.map((capability) => ({
+    capability,
+    disposition: policy.capabilities[capability] || 'review'
+  }));
+  const risk = maxRisk([scoreRisk(score), ...capabilities.map(capabilityRisk)]);
+  return { target: root, filesScanned: files.length, score, risk, capabilities, capabilityPolicies, findings };
 }
 
 function selfTest() {
-  const safe = scanText('export const add = (a,b) => a+b;', 'safe.js');
+  const safe = scanText('// docs: https://example.com\nexport const add = (a,b) => a+b;', 'safe.js');
   const risky = scanText("const cp=require('child_process'); const h=process.env.HOME;", 'risky.js');
+  const secret = scanText('const key = process.env.OPENAI_API_KEY;', 'secret.js');
   if (safe.length !== 0) throw new Error('self-test: safe sample produced findings');
   if (!risky.some((x) => x.rule === 'shell-exec') || !risky.some((x) => x.rule === 'env-access')) {
     throw new Error('self-test: risky sample was not detected');
   }
+  if (!secret.some((x) => x.rule === 'secret-env')) throw new Error('self-test: secret environment access was not detected');
   console.log('audit-mcp self-test: OK');
 }
 
@@ -110,7 +126,8 @@ if (json) {
 } else {
   console.log(`XFreedom MCP audit: ${report.risk.toUpperCase()} (${report.score})`);
   console.log(`Files: ${report.filesScanned}; capabilities: ${report.capabilities.join(', ') || 'none detected'}`);
-  for (const f of report.findings) console.log(`- ${f.file}:${f.line} ${f.rule} -> ${f.capability} (+${f.score})`);
+  for (const p of report.capabilityPolicies) console.log(`  policy ${p.capability}: ${p.disposition}`);
+  for (const f of report.findings) console.log(`- ${f.file}:${f.line} ${f.rule} -> ${f.capability}`);
   if (report.findings.length) console.log('Heuristic result only: review source and runtime behavior before trust.');
 }
-process.exit(report.score >= thresholdFor(failOn) ? 2 : 0);
+process.exit(riskRank[report.risk] >= riskRank[failOn] ? 2 : 0);
