@@ -1,0 +1,58 @@
+name: AI stack smoke
+
+on:
+  pull_request:
+    paths:
+      - 'infra/ai-stack/**'
+      - '.github/workflows/ai-stack-smoke.yml'
+  push:
+    branches:
+      - 'ai-agent-stack-*'
+    paths:
+      - 'infra/ai-stack/**'
+      - '.github/workflows/ai-stack-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bash syntax
+        run: |
+          bash -n infra/ai-stack/install-linux.sh
+          bash -n infra/ai-stack/healthcheck-linux.sh
+
+      - name: PowerShell parse
+        shell: pwsh
+        run: |
+          $files = @(
+            'infra/ai-stack/install-windows.ps1',
+            'infra/ai-stack/healthcheck-windows.ps1'
+          )
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | Format-List | Out-String | Write-Error
+              exit 1
+            }
+          }
+
+      - name: Guard against committed private keys
+        shell: bash
+        run: |
+          if grep -RInE --exclude='stack.env.example' \
+            '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|mnemonic[[:space:]]*=[[:space:]]*[^#[:space:]])' \
+            infra/ai-stack; then
+            echo 'Potential secret material found in infra/ai-stack' >&2
+            exit 1
+          fi
