@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "thresholds": { "review": 15, "high": 30, "critical": 50 },
+  "defaultMode": "deny-unreviewed",
+  "capabilities": {
+    "public_read": "allow",
+    "workspace_read": "allow",
+    "workspace_write": "review",
+    "network_outbound": "review",
+    "browser_control": "high",
+    "shell_exec": "high",
+    "credential_read": "deny",
+    "host_home_read": "deny",
+    "ssh_key_read": "deny",
+    "browser_profile_read": "deny",
+    "secret_store_read": "deny"
+  },
+  "rules": [
+    { "id": "env-access", "pattern": "process\\.env|os\\.environ|getenv\\(", "score": 8, "capability": "credential_read" },
+    { "id": "shell-exec", "pattern": "child_process|execSync\\(|spawnSync\\(|subprocess\\.|os\\.system\\(", "score": 18, "capability": "shell_exec" },
+    { "id": "network-client", "pattern": "https?://|fetch\\(|axios|requests\\.|urllib|WebSocket", "score": 8, "capability": "network_outbound" },
+    { "id": "ssh-material", "pattern": "\\.ssh|id_rsa|id_ed25519|authorized_keys", "score": 30, "capability": "ssh_key_read" },
+    { "id": "browser-profile", "pattern": "Login Data|Cookies|Local State|User Data|chrome.*profile|chromium.*profile", "score": 30, "capability": "browser_profile_read" },
+    { "id": "secret-store", "pattern": "keychain|Credential Manager|Windows Credential|libsecret|secretservice|security find-generic-password", "score": 30, "capability": "secret_store_read" },
+    { "id": "home-traversal", "pattern": "homedir\\(|Path\\.home|expanduser\\(|USERPROFILE|HOME", "score": 10, "capability": "host_home_read" },
+    { "id": "download-exec", "pattern": "curl.+\\|.+sh|wget.+\\|.+sh|Invoke-WebRequest.+Invoke-Expression|iex\\(", "score": 35, "capability": "shell_exec" },
+    { "id": "powershell", "pattern": "powershell(?:\\.exe)?|pwsh(?:\\.exe)?", "score": 12, "capability": "shell_exec" },
+    { "id": "encoded-command", "pattern": "-EncodedCommand|-enc[[:space:]]+[A-Za-z0-9+/=]{20,}", "score": 40, "capability": "shell_exec" }
+  ]
+}
