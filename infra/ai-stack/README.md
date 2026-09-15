@@ -18,6 +18,8 @@ This layout deliberately avoids making OpenClaw and Hermes both own the same Tel
 3. Never expose ClawRouter port `8402` or OpenClaw Gateway port `18789` directly to the public Internet.
 4. Keep OpenClaw and Hermes workspaces separate when both can write files. Use Git branches/PRs as the synchronization boundary.
 5. Run third-party skills/plugins only after reviewing their source and requested capabilities.
+6. Unknown MCP servers and skills start in quarantine with no host secrets, no host HOME and no network.
+7. A model never receives credential-store access directly; privileged actions belong behind a separate approval boundary.
 
 ## Windows
 
@@ -44,12 +46,11 @@ openclaw gateway install
 openclaw gateway status --json
 ```
 
-Hermes native Windows can be used interactively or through its supported gateway flow after `hermes setup`.
-
-Run health checks:
+Run health and security checks:
 
 ```powershell
 .\infra\ai-stack\healthcheck-windows.ps1
+.\infra\ai-stack\security\security-check-windows.ps1
 ```
 
 ## Ubuntu / VPS
@@ -73,13 +74,52 @@ After configuration, rerun the installer with service activation:
 INSTALL_SERVICES=1 bash infra/ai-stack/install-linux.sh
 ```
 
-This uses the projects' own supported service installers instead of hand-written process supervisors. On Linux, OpenClaw installs a systemd user unit. Hermes installs its managed gateway service. The script enables systemd linger when `loginctl` and passwordless/interactive `sudo` are available.
-
-Run health checks:
+Run health and security checks:
 
 ```bash
 bash infra/ai-stack/healthcheck-linux.sh
+bash infra/ai-stack/security/security-check-linux.sh
 ```
+
+## XFreedom Agent Security Gateway
+
+The `security/` directory is the admission boundary for unknown MCP servers, skills and agent stacks.
+
+### 1. Static preflight
+
+```bash
+node infra/ai-stack/security/audit-mcp.mjs /path/to/plugin --json
+```
+
+It flags capabilities associated with environment/credential access, shell execution, outbound networking, SSH material, browser profiles, host HOME and secret stores. The score is a heuristic triage signal, not proof that code is safe or malicious.
+
+Risk gates are defined in `security/policy.json`. `credential_read`, `ssh_key_read`, `browser_profile_read`, `secret_store_read` and host-home access are deny/high-risk capabilities by default.
+
+### 2. Quarantine execution
+
+Linux:
+
+```bash
+bash infra/ai-stack/security/quarantine-linux.sh /path/to/plugin npm test
+```
+
+Windows / Docker Desktop:
+
+```powershell
+.\infra\ai-stack\security\quarantine-windows.ps1 C:\path\to\plugin npm test
+```
+
+The default quarantine uses a read-only bind mount, `--network none`, no Linux capabilities, `no-new-privileges`, no host HOME, isolated `/tmp`, and CPU/RAM/PID limits. Use `XF_SANDBOX_IMAGE` when the plugin needs a runtime other than Node 22 Alpine.
+
+Do not pass real API keys or mount `%USERPROFILE%`, `$HOME`, browser profiles, `.ssh`, cloud credential directories or production `.env` files into quarantine.
+
+### 3. Promotion
+
+A plugin leaves quarantine only after source review, declared-capability review, a clean/understood static report and a runtime test. Give each promoted integration the minimum filesystem, network and OAuth scopes it needs; do not share one privileged token across unrelated MCP servers.
+
+### 4. OpenClaw relay hardening
+
+`security-check-*` runs `openclaw doctor` and fails when `browser.extensionRelay.allowLegacyAuth=true` is reported. Update paired Chrome/extensions or CDP clients to Browser Relay Authentication v2 before disabling legacy auth. The check also warns when ports `18789` or `8402` listen on a non-loopback address.
 
 ## Router choices
 
@@ -118,4 +158,8 @@ OpenClaw is the orchestration/control surface. Hermes is an independent speciali
 - `install-linux.sh` — idempotent Ubuntu/VPS bootstrap.
 - `healthcheck-windows.ps1` — command/version/gateway checks.
 - `healthcheck-linux.sh` — command/version/gateway/service checks.
+- `security/audit-mcp.mjs` — static capability/risk preflight.
+- `security/policy.json` — default deny/review/high policy.
+- `security/quarantine-*.{sh,ps1}` — no-network read-only quarantine runners.
+- `security/security-check-*.{sh,ps1}` — relay-auth and listener-exposure checks.
 - `stack.env.example` — non-secret defaults only.
