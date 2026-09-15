@@ -7,7 +7,7 @@ on:
       - '.github/workflows/ai-stack-smoke.yml'
   push:
     branches:
-      - 'ai-agent-stack-*'
+      - 'ai-agent-*'
     paths:
       - 'infra/ai-stack/**'
       - '.github/workflows/ai-stack-smoke.yml'
@@ -25,13 +25,17 @@ jobs:
         run: |
           bash -n infra/ai-stack/install-linux.sh
           bash -n infra/ai-stack/healthcheck-linux.sh
+          bash -n infra/ai-stack/security/quarantine-linux.sh
+          bash -n infra/ai-stack/security/security-check-linux.sh
 
       - name: PowerShell parse
         shell: pwsh
         run: |
           $files = @(
             'infra/ai-stack/install-windows.ps1',
-            'infra/ai-stack/healthcheck-windows.ps1'
+            'infra/ai-stack/healthcheck-windows.ps1',
+            'infra/ai-stack/security/quarantine-windows.ps1',
+            'infra/ai-stack/security/security-check-windows.ps1'
           )
           foreach ($file in $files) {
             $tokens = $null
@@ -46,6 +50,12 @@ jobs:
               exit 1
             }
           }
+
+      - name: Security auditor self-test
+        run: |
+          node --check infra/ai-stack/security/audit-mcp.mjs
+          node -e "JSON.parse(require('fs').readFileSync('infra/ai-stack/security/policy.json','utf8'))"
+          node infra/ai-stack/security/audit-mcp.mjs --self-test
 
       - name: Guard against committed private keys
         shell: bash
