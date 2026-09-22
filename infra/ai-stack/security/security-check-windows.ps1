@@ -29,7 +29,7 @@ if (Get-Command openclaw -ErrorAction SilentlyContinue) {
 
 try {
   $listeners = Get-NetTCPConnection -State Listen -ErrorAction Stop |
-    Where-Object { $_.LocalPort -in @(18789, 8402) }
+    Where-Object { $_.LocalPort -in @(18789, 8402, 11434) }
   foreach ($item in $listeners) {
     if ($item.LocalAddress -in @('127.0.0.1', '::1')) {
       Write-Host "[ OK ] Port $($item.LocalPort) is loopback-bound: $($item.LocalAddress)" -ForegroundColor Green
