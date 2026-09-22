@@ -190,6 +190,7 @@ test("controller configs require approval and disable parallel Goose tasks", () 
   const hermes = hermesConfig(workspace, {});
 
   assert.equal(shared.GOOSE_PROVIDER, "ollama");
+  assert.equal(shared.XF_GOOSE_STATE_DIR, ".goose-worker-state");
   assert.equal(openclaw.supportsParallelToolCalls, false);
   assert.equal(openclaw.codex.defaultToolsApprovalMode, "prompt");
   assert.equal(hermes.trust, "untrusted");

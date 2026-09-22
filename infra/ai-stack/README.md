@@ -53,7 +53,7 @@ The default installation does all of the following:
 - installs the pinned MCP bridge dependencies;
 - creates `~/xfreedom-agent-workspace`;
 - registers `xfreedom-goose` in OpenClaw and `xfreedom_goose` in Hermes;
-- installs the shared Agent Skill into `~/.agents/skills` and `~/.hermes/skills`.
+- installs the shared Agent Skill into `~/.agents/skills`, `~/.hermes/skills`, and the worker's isolated home.
 
 Select another local model or workspace without editing the scripts:
 
@@ -168,7 +168,7 @@ In Hermes the tools are named `mcp__xfreedom_goose__goose_health` and `mcp__xfre
 
 ## Shared Agent Skill
 
-The source skill is `.agents/skills/xfreedom-goose-worker/SKILL.md`. That path is discovered by Goose and OpenClaw in a repository. The linker also copies it to the global Agent Skills path and to Hermes' global skills directory so the same delegation rules apply in all three runtimes.
+The source skill is `.agents/skills/xfreedom-goose-worker/SKILL.md`. That path is discovered by Goose and OpenClaw in a repository. The linker also copies it to the global Agent Skills path, Hermes' global skills directory, and the isolated worker home so the same delegation rules apply in all three runtimes.
 
 The skill requires a bounded task, a relative workspace, independent verification of Goose's result, and no recursive Goose-to-Goose delegation.
 

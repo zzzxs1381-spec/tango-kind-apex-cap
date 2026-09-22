@@ -34,6 +34,9 @@ const SAFE_PARENT_ENV = new Set([
   "TERM",
   "COLORTERM",
   "NO_COLOR",
+  "SHELL",
+  "USER",
+  "USERNAME",
 ]);
 
 function integerFromEnv(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {

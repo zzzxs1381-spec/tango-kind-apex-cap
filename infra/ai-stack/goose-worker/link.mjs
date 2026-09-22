@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,10 +27,19 @@ function boundedInteger(value, fallback, min, max) {
   return Math.min(max, Math.max(min, parsed));
 }
 
+function stateDirectoryName(env = process.env) {
+  const name = env.XF_GOOSE_STATE_DIR || ".goose-worker-state";
+  if (name === "." || name === ".." || !/^[A-Za-z0-9._-]{1,128}$/.test(name)) {
+    throw new Error("XF_GOOSE_STATE_DIR must be one directory name inside the workspace root.");
+  }
+  return name;
+}
+
 export function commonEnvironment(workspaceRoot, env = process.env) {
   const timeoutSeconds = boundedInteger(env.XF_GOOSE_TIMEOUT_SECONDS, 900, 30, 3600);
   const values = {
     XF_GOOSE_WORKSPACE_ROOT: workspaceRoot,
+    XF_GOOSE_STATE_DIR: stateDirectoryName(env),
     XF_GOOSE_TIMEOUT_SECONDS: String(timeoutSeconds),
     XF_GOOSE_MAX_OUTPUT_BYTES: String(
       boundedInteger(env.XF_GOOSE_MAX_OUTPUT_BYTES, 1_048_576, 4096, 10 * 1024 * 1024),
@@ -43,7 +52,6 @@ export function commonEnvironment(workspaceRoot, env = process.env) {
     GOOSE_MAX_TURNS: String(boundedInteger(env.GOOSE_MAX_TURNS, 50, 1, 200)),
     OLLAMA_HOST: env.OLLAMA_HOST || "http://127.0.0.1:11434",
   };
-  if (env.XF_GOOSE_STATE_DIR) values.XF_GOOSE_STATE_DIR = env.XF_GOOSE_STATE_DIR;
   if (env.XF_GOOSE_CONTAINER) values.XF_GOOSE_CONTAINER = env.XF_GOOSE_CONTAINER;
   return values;
 }
@@ -107,14 +115,50 @@ async function replaceDirectory(source, destination) {
   await cp(source, destination, { recursive: true });
 }
 
-async function installSkills() {
+function pathEscapes(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+}
+
+async function ensureWorkerState(workspaceRoot) {
+  const canonicalRoot = await realpath(workspaceRoot);
+  const target = path.join(canonicalRoot, stateDirectoryName());
+  let canonicalState;
+  try {
+    canonicalState = await realpath(target);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    try {
+      await mkdir(target, { recursive: false, mode: 0o700 });
+    } catch (mkdirError) {
+      if (mkdirError.code !== "EEXIST") throw mkdirError;
+    }
+    canonicalState = await realpath(target);
+  }
+  if (pathEscapes(canonicalRoot, canonicalState)) {
+    throw new Error("XF_GOOSE_STATE_DIR resolves outside XF_GOOSE_WORKSPACE_ROOT.");
+  }
+  return canonicalState;
+}
+
+async function installSkills(workspaceRoot) {
   const home = os.homedir();
   const agentSkill = path.join(home, ".agents", "skills", "xfreedom-goose-worker");
   const hermesHome = process.env.HERMES_HOME || path.join(home, ".hermes");
   const hermesSkill = path.join(hermesHome, "skills", "xfreedom-goose-worker");
+  const workerState = await ensureWorkerState(workspaceRoot);
+  const workerSkill = path.join(
+    workerState,
+    ".agents",
+    "skills",
+    "xfreedom-goose-worker",
+  );
   await replaceDirectory(skillSource, agentSkill);
   await replaceDirectory(skillSource, hermesSkill);
-  console.log(`[goose-link] Installed shared skill in ${agentSkill} and ${hermesSkill}.`);
+  await replaceDirectory(skillSource, workerSkill);
+  console.log(
+    `[goose-link] Installed shared skill in ${agentSkill}, ${hermesSkill}, and ${workerSkill}.`,
+  );
 }
 
 async function main() {
@@ -145,7 +189,7 @@ async function main() {
   }
 
   await mkdir(workspaceRoot, { recursive: true });
-  await installSkills();
+  await installSkills(workspaceRoot);
 
   if (target === "all" || target === "openclaw") {
     const installed = run(
