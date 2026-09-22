@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'infra/ai-stack/**'
+      - '.agents/skills/xfreedom-goose-worker/**'
       - '.github/workflows/ai-stack-smoke.yml'
   push:
     branches:
       - 'ai-agent-*'
     paths:
       - 'infra/ai-stack/**'
+      - '.agents/skills/xfreedom-goose-worker/**'
       - '.github/workflows/ai-stack-smoke.yml'
 
 permissions:
@@ -20,6 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/ai-stack/goose-worker/package-lock.json
 
       - name: Bash syntax
         run: |
@@ -56,6 +63,11 @@ jobs:
           node --check infra/ai-stack/security/audit-mcp.mjs
           node -e "JSON.parse(require('fs').readFileSync('infra/ai-stack/security/policy.json','utf8'))"
           node infra/ai-stack/security/audit-mcp.mjs --self-test
+
+      - name: Goose MCP bridge tests
+        run: |
+          npm --prefix infra/ai-stack/goose-worker ci --ignore-scripts
+          npm --prefix infra/ai-stack/goose-worker test
 
       - name: Guard against committed private keys
         shell: bash

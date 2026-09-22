@@ -1,0 +1,19 @@
+{
+  "name": "@xfreedom/goose-worker-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Restricted MCP bridge that lets OpenClaw and Hermes delegate work to goose.",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test server.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.4.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "UNLICENSED"
+}

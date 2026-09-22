@@ -2,8 +2,16 @@
 param(
     [switch]$SkipOpenClaw,
     [switch]$SkipHermes,
+    [switch]$SkipGoose,
+    [switch]$SkipOllama,
+    [switch]$SkipGooseModel,
+    [switch]$SkipGooseLink,
+    [switch]$InstallBlockRunClawRouter,
     [switch]$SkipBlockRunClawRouter,
-    [switch]$InstallGatewayService
+    [switch]$InstallGatewayService,
+    [string]$GooseModel = '',
+    [string]$OllamaHost = '',
+    [string]$GooseWorkspace = ''
 )
 
 Set-StrictMode -Version Latest
@@ -17,7 +25,8 @@ function Write-Step([string]$Message) {
 function Refresh-Path {
     $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
     $user = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $env:Path = "$machine;$user"
+    $localBin = Join-Path $HOME '.local\bin'
+    $env:Path = "$localBin;$machine;$user"
 }
 
 function Has-Command([string]$Name) {
@@ -29,6 +38,35 @@ function Invoke-RemotePowerShell([string]$Uri, [string[]]$Arguments = @()) {
     $script = [scriptblock]::Create($source)
     & $script @Arguments
 }
+
+function Test-OllamaReady([string]$HostUrl) {
+    try {
+        Invoke-RestMethod -Uri "$($HostUrl.TrimEnd('/'))/api/tags" -TimeoutSec 3 | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($GooseModel)) {
+    $GooseModel = if ($env:GOOSE_MODEL) { $env:GOOSE_MODEL } else { 'qwen3:8b' }
+}
+if ([string]::IsNullOrWhiteSpace($OllamaHost)) {
+    $OllamaHost = if ($env:OLLAMA_HOST) { $env:OLLAMA_HOST } else { 'http://127.0.0.1:11434' }
+}
+if ([string]::IsNullOrWhiteSpace($GooseWorkspace)) {
+    $GooseWorkspace = if ($env:XF_GOOSE_WORKSPACE_ROOT) {
+        $env:XF_GOOSE_WORKSPACE_ROOT
+    }
+    else {
+        Join-Path $HOME 'xfreedom-agent-workspace'
+    }
+}
+
+$env:GOOSE_MODEL = $GooseModel
+$env:OLLAMA_HOST = $OllamaHost
+$env:XF_GOOSE_WORKSPACE_ROOT = $GooseWorkspace
 
 Write-Host 'XFreedom AI Agent Stack - Windows bootstrap' -ForegroundColor Green
 Write-Host 'Installs official runtimes; it never writes provider keys, bot tokens or wallet secrets.'
@@ -65,7 +103,99 @@ if (-not $SkipHermes) {
     hermes --help | Select-Object -First 4
 }
 
-if (-not $SkipBlockRunClawRouter) {
+if (-not $SkipGoose) {
+    Write-Step 'Goose local worker'
+    if (-not (Has-Command 'goose')) {
+        $installerRoot = Join-Path ([IO.Path]::GetTempPath()) "xfreedom-goose-$PID"
+        $installerPath = Join-Path $installerRoot 'download_cli.ps1'
+        New-Item -ItemType Directory -Path $installerRoot -Force | Out-Null
+        Invoke-WebRequest `
+            -UseBasicParsing `
+            -Uri 'https://github.com/aaif-goose/goose/releases/download/stable/download_cli.ps1' `
+            -OutFile $installerPath
+
+        $env:CONFIGURE = 'false'
+        Push-Location $installerRoot
+        try {
+            & $installerPath
+        }
+        finally {
+            Pop-Location
+            Remove-Item -Path $installerRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Refresh-Path
+    }
+
+    if (-not (Has-Command 'goose')) {
+        throw 'Goose install completed but goose is not on PATH. Open a new PowerShell window and rerun this script.'
+    }
+    goose --version
+}
+
+if (-not $SkipOllama) {
+    Write-Step 'Ollama local inference runtime'
+    if (-not (Has-Command 'ollama')) {
+        if (-not (Has-Command 'winget')) {
+            throw 'winget is required for automatic Ollama installation. Install Ollama manually or rerun with -SkipOllama and a reachable -OllamaHost.'
+        }
+        winget install --id Ollama.Ollama --exact --accept-source-agreements --accept-package-agreements
+        if ($LASTEXITCODE -ne 0) {
+            throw "Ollama winget installation failed with exit code $LASTEXITCODE."
+        }
+        Refresh-Path
+    }
+
+    if (-not (Has-Command 'ollama')) {
+        throw 'Ollama install completed but ollama is not on PATH. Open a new PowerShell window and rerun this script.'
+    }
+
+    $ollamaUri = [Uri]$OllamaHost
+    $isLocalOllama = $ollamaUri.Host -in @('127.0.0.1', 'localhost', '::1')
+    if (-not (Test-OllamaReady $OllamaHost) -and $isLocalOllama) {
+        Start-Process -FilePath (Get-Command ollama).Source -ArgumentList 'serve' -WindowStyle Hidden | Out-Null
+        for ($attempt = 0; $attempt -lt 15; $attempt++) {
+            if (Test-OllamaReady $OllamaHost) { break }
+            Start-Sleep -Seconds 1
+        }
+    }
+
+    if (-not (Test-OllamaReady $OllamaHost)) {
+        Write-Warning "Ollama is installed but $OllamaHost is not reachable. Start it before using Goose."
+    }
+    elseif (-not $SkipGooseModel) {
+        ollama pull $GooseModel
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not pull Ollama model '$GooseModel'."
+        }
+    }
+}
+
+if (-not $SkipGooseLink) {
+    Write-Step 'Goose MCP bridge for OpenClaw and Hermes'
+    if (-not (Has-Command 'node') -or -not (Has-Command 'npm')) {
+        throw 'Node.js 22+ and npm are required for the Goose MCP bridge.'
+    }
+    $nodeMajor = [int]((& node -p "Number(process.versions.node.split('.')[0])").Trim())
+    if ($nodeMajor -lt 22) {
+        throw "Node.js 22+ is required for the Goose MCP bridge; found $(& node --version)."
+    }
+
+    $gooseWorkerDir = Join-Path $PSScriptRoot 'goose-worker'
+    npm --prefix $gooseWorkerDir ci --omit=dev --ignore-scripts
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not install Goose MCP bridge dependencies.'
+    }
+
+    & node (Join-Path $gooseWorkerDir 'link.mjs') `
+        --target all `
+        --workspace $GooseWorkspace `
+        --no-probe
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not register the Goose MCP bridge.'
+    }
+}
+
+if ($InstallBlockRunClawRouter -and -not $SkipBlockRunClawRouter) {
     Write-Step 'Optional BlockRun ClawRouter package'
     if (-not (Has-Command 'npm')) {
         Write-Warning 'npm is not on PATH. OpenClaw normally provisions Node.js; open a new shell and rerun to install ClawRouter.'
@@ -105,7 +235,16 @@ if (Has-Command 'openclaw') {
 if (Has-Command 'hermes') {
     try { hermes doctor } catch { Write-Warning "hermes doctor reported: $($_.Exception.Message)" }
 }
+if (-not $SkipGooseLink) {
+    if (Has-Command 'openclaw') {
+        try { openclaw mcp doctor xfreedom-goose --probe } catch { Write-Warning 'OpenClaw could not probe the Goose MCP bridge.' }
+    }
+    if (Has-Command 'hermes') {
+        try { hermes mcp test xfreedom_goose } catch { Write-Warning 'Hermes could not probe the Goose MCP bridge.' }
+    }
+}
 
 Write-Host "`nBootstrap complete." -ForegroundColor Green
 Write-Host 'Next: run "openclaw onboard" and "hermes setup" once to add your own provider/channel credentials.'
-Write-Host 'Optional BlockRun routing: run "clawrouter setup" yourself. That step may create/import wallet credentials and is intentionally not automated here.'
+Write-Host "Goose worker: local Ollama model '$GooseModel', workspace '$GooseWorkspace'."
+Write-Host 'Optional BlockRun routing: rerun with -InstallBlockRunClawRouter, then run "clawrouter setup" yourself.'

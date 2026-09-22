@@ -22,7 +22,7 @@ fi
 
 if command -v ss >/dev/null 2>&1; then
   listeners="$(ss -ltnH 2>/dev/null || true)"
-  for port in 18789 8402; do
+  for port in 18789 8402 11434; do
     matches="$(grep -E "[:.]${port}[[:space:]]" <<<"$listeners" || true)"
     [[ -z "$matches" ]] && continue
     while IFS= read -r line; do
