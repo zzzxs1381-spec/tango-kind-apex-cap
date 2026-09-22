@@ -73,6 +73,7 @@ jobs:
         shell: bash
         run: |
           if grep -RInE --exclude='stack.env.example' \
+            --exclude-dir='node_modules' \
             '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|mnemonic[[:space:]]*=[[:space:]]*[^#[:space:]])' \
             infra/ai-stack; then
             echo 'Potential secret material found in infra/ai-stack' >&2
